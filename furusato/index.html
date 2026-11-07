@@ -77,18 +77,30 @@ const YEAR=new Date().getFullYear();
 let S; function fresh(){ return {mode:null, year:YEAR, name:'', salary:0, pension:0, over65:false, otherIncome:0, adjustApplies:false,
   kyuyo:null, kokuho:0, nenkin:0, shEtc:0, hasSpouse:null, spouseIncome:0, spouseOver70:false, dep:{ippan:0,tokutei:0,rojin:0,doukyo:0}, spr:[],
   per:{shogai:0,tokubetsu:0,doukyoTokubetsu:0,kafu:0,hitorioya:0,gakusei:0}, life:{new:0,old:0,care:0,pnew:0,pold:0}, jishin:0, oldLong:0, kyosai:0, iryo:0, zasson:0, loanBalance:0, prevFurusato:0,
-  biz:{cur:Array(12).fill(null), prev:Array(12).fill(null), elapsed:0, method:4, manual:null, aoiro:650000, vat:{mode:'kani',acc:'nuki',minashi:0.7,out:0,inn:0}, adj:0, suiiRead:false, shinkokuRead:false},
+  biz:{src:'manual', mode:'annual', ytdMethod:'annualize', sales:0, exp:0, month:Math.max(1,new Date().getMonth()), ytdSales:0, ytdExp:0, remainMonthly:null, cur:Array(12).fill(null), prev:Array(12).fill(null), curSales:Array(12).fill(null), elapsed:0, method:4, aoiro:650000, vat:{mode:'kani',acc:'komi',minashi:0.7,out:0,inn:0,paidBooked:'no'}, adj:0, suiiRead:false, shinkokuRead:false},
   fromNencho:false, certsRead:true, safety:0.9}; }
 S=fresh(); let steps=[], idx=0;
 
 // ---------- 事業所得の見込み ----------
-function bizForecast(){ const b=S.biz; const cur=b.cur.map(v=>v??0), prev=b.prev.map(v=>v??0); const el=b.elapsed||0; const cum=cur.slice(0,el).reduce((a,x)=>a+x,0);
-  const m={}; m[1]=el?cum+(cur.slice(Math.max(0,el-3),el).reduce((a,x)=>a+x,0)/Math.min(3,el))*(12-el):0; m[3]=cum+prev.slice(el,12).reduce((a,x)=>a+x,0); m[4]=el?cum*12/el:0;
-  const base=b.manual!=null?b.manual:(m[b.method]??m[4]); const f=(el&&cum&&b.manual==null)?base/cum:(el?12/el:1);
-  const v=b.vat; const out=v.out*f, inn=v.inn*f; let pay=0; if(v.mode==='kani')pay=out*(1-v.minashi); else if(v.mode==='niwari')pay=out*0.2; else if(v.mode==='honsoku')pay=out-inn;
-  let diff; if(v.mode==='menzei')diff=v.acc==='nuki'?out-inn:0; else diff=v.acc==='nuki'?(out-inn)-pay:-pay;
+const aoiroOpts=()=>[[650000,'65万円'],[550000,'55万円'],[100000,'10万円'],[0,'なし（白色）']].map(([k,l])=>`<option value="${k}" ${S.biz.aoiro===k?'selected':''}>${l}</option>`).join('');
+function bizForecast(){ const b=S.biz; let base=0,cum=0,el=0,m={},annualSales=null,annualExp=null,hasPrev=false,label='';
+  if(b.src==='photo'){ const cur=b.cur.map(v=>v??0), prev=b.prev.map(v=>v??0); el=b.elapsed||0; cum=cur.slice(0,el).reduce((a,x)=>a+x,0);
+    m[1]=el?cum+(cur.slice(Math.max(0,el-3),el).reduce((a,x)=>a+x,0)/Math.min(3,el))*(12-el):0; m[3]=cum+prev.slice(el,12).reduce((a,x)=>a+x,0); m[4]=el?cum*12/el:0; hasPrev=prev.slice(el).some(x=>x!==0);
+    base=m[b.method]??m[4]; const f=(el&&cum)?base/cum:(el?12/el:1); const sl=b.curSales.slice(0,el).reduce((a,x)=>a+(x??0),0); if(sl) annualSales=sl*f; label=`1〜${el}月の実績から`; }
+  else if(b.mode==='annual'){ base=b.sales-b.exp; annualSales=b.sales; annualExp=b.exp; label='年間の見込み'; }
+  else { el=b.month||0; cum=b.ytdSales-b.ytdExp; const f=el?12/el:1; annualSales=b.ytdSales*f;
+    if(b.ytdMethod==='remain'&&el<12){ const rm=b.remainMonthly!=null?b.remainMonthly:(el?cum/el:0); base=cum+rm*(12-el); annualExp=annualSales-base; label=`1〜${el}月の実績＋残り${12-el}か月の見込み`; }
+    else { base=cum*f; annualExp=b.ytdExp*f; label=`1〜${el}月の実績を12か月に換算`; } }
+  // 消費税の精算差益（仮受・仮払が無ければ売上・経費から概算。経費の7割が課税仕入とみなす）
+  const v=S.biz.vat; const rate=v.acc==='komi'?10/110:0.1; let out=v.out, inn=v.inn, estimated=false;
+  if(!out&&annualSales!=null){ out=annualSales*rate; estimated=true; }
+  if(!inn&&annualExp!=null&&out){ inn=Math.max(0,annualExp)*0.7*rate; estimated=true; }
+  else if(b.src==='photo'&&v.out&&!v.inn){ /* 仮払不明 */ }
+  if(b.src==='photo'&&v.out){ const f=(el&&cum)?base/cum:1; out=v.out*f; inn=v.inn*f; estimated=false; }
+  let pay=0; if(v.mode==='kani')pay=out*(1-v.minashi); else if(v.mode==='niwari')pay=out*0.2; else if(v.mode==='honsoku')pay=Math.max(0,out-inn);
+  let diff; if(v.mode==='menzei')diff=v.acc==='nuki'?out-inn:0; else if(v.acc==='nuki')diff=(out-inn)-pay; else diff=v.paidBooked==='yes'?0:-pay;
   const pre=base+diff+(b.adj||0); const aoiro=Math.min(b.aoiro,Math.max(0,pre));
-  return {cum,el,m,base,diff,pay,pre,aoiro,income:pre-aoiro,hasPrev:prev.slice(el).some(x=>x!==0)}; }
+  return {cum,el,m,base,diff,pay,pre,aoiro,income:pre-aoiro,hasPrev,label,estimated,out,inn}; }
 function calcInput(){ const i={year:S.year, salary:S.salary, pension:S.pension, over65:S.over65, otherIncome:S.otherIncome, adjustApplies:S.adjustApplies,
   shaho:{kyuyo:S.kyuyo!=null?S.kyuyo:Math.round(S.salary*0.155), kokuho:S.kokuho, nenkin:S.nenkin, etc:S.shEtc}, kyosai:S.kyosai, life:S.life, jishin:S.jishin, oldLong:S.oldLong, iryo:S.iryo, zasson:S.zasson, loanBalance:S.loanBalance,
   spouseIncome:S.hasSpouse==='yes'?S.spouseIncome:null, spouseOver70:S.spouseOver70, dependents:S.dep, specialRelatives:S.spr, personal:S.per};
@@ -104,26 +116,40 @@ function buildSteps(){
       <details><summary>給与以外の収入もある</summary><label>年金（年間）</label>${yenInput('pension',S.pension)}<div class="chk"><input type="checkbox" id="over65" ${S.over65?'checked':''}><span>65歳以上</span></div><label>事業・不動産・副業の所得 <small>収入−経費</small></label>${yenInput('otherIncome',S.otherIncome)}</details>`,
       next:()=>{ S.salary=toNum($('#salary').value); if(!S.salary) throw new Error('年収を入れてください'); S.pension=toNum($('#pension').value); S.over65=$('#over65').checked; S.otherIncome=toNum($('#otherIncome').value); }});
   } else {
-    s.push({id:'suii', t:'推移損益の写真', html:()=>{ const f=bizForecast(); return `<p>会計ソフトの<b>推移損益（推移試算表）</b>を撮ってください。6か月以上の実績があるもの。</p>
-      <label class="cam">📷 今年の推移損益を撮る<input type="file" accept="image/*,application/pdf" data-ocr="suii"></label>
-      ${S.biz.suiiRead?`<div class="ok">1〜${f.el}月の所得 <b>${yen(f.cum)}</b><br>12か月換算 <b>${yen(f.m[4])}</b></div>`:''}
-      ${S.biz.suiiRead?`<label class="cam" style="padding:12px;font-size:15px">📷 前年の推移損益も撮る（任意）<input type="file" accept="image/*,application/pdf" data-ocr="suii"></label>`:''}
-      <details ${S.biz.manual!=null?'open':''}><summary>写真を撮らずに、今年の所得の見込みを入れる</summary><label>今年の事業所得の見込み <small>青色申告特別控除を引く前</small></label>${yenInput('manual',S.biz.manual)}</details>`; },
-      mount:()=>bindOcr(), next:()=>{ const m=toNum($('#manual').value); S.biz.manual=m||null; if(!S.biz.suiiRead&&!S.biz.manual) throw new Error('写真を撮るか、所得の見込みを入れてください'); }});
-    if(S.biz.suiiRead&&S.biz.manual==null) s.push({id:'method', t:'残りの月の見込み', html:()=>{ const f=bizForecast(); const opts=[[4,'12か月換算',`${yen(f.m[4])}　迷ったらこれ`],[1,'直近3か月の平均で伸ばす',`${yen(f.m[1])}　最近の調子が続くなら`]]; if(f.hasPrev) opts.push([3,'前年の同じ月を足す',`${yen(f.m[3])}　前年と同じ動きなら`]); return `<p>1〜${f.el}月の所得 ${yen(f.cum)}。残りをどう見ますか。</p>${big('method',opts.map(o=>[String(o[0]),o[1],o[2]]),String(S.biz.method))}`; },
+    s.push({id:'biz', t:'今年の売上と経費', html:()=>{ const b=S.biz; if(b.src==='photo'){ const f=bizForecast(); return `<p>会計ソフトの<b>推移損益（推移試算表）</b>を撮ってください。6か月以上の実績があるもの。</p>
+        <label class="cam">📷 今年の推移損益を撮る<input type="file" accept="image/*,application/pdf" data-ocr="suii"></label>
+        ${b.suiiRead?`<div class="ok">1〜${f.el}月の所得 <b>${yen(f.cum)}</b><br>12か月換算 <b>${yen(f.m[4])}</b></div><label class="cam" style="padding:12px;font-size:15px">📷 前年の推移損益も撮る（任意）<input type="file" accept="image/*,application/pdf" data-ocr="suii"></label>`:''}
+        <label>青色申告特別控除</label><select id="aoiro">${aoiroOpts()}</select>
+        <p class="note noprint" style="margin-top:14px"><a href="#" id="toManual" style="color:var(--cd);font-weight:700">← 手入力に戻る</a></p>`; }
+      return `${big('bizmode',[['annual','年間の見込みで入れる','今年1年の売上・経費のだいたいの額'],['ytd','今までの実績から見込む','試算表の累計を入れて残りを見込む']],b.mode)}
+        <div id="m_annual" style="display:${b.mode==='annual'?'block':'none'}"><label>年間の売上 <small>1〜12月の見込み</small></label>${yenInput('sales',b.sales)}<label>年間の経費 <small>仕入・人件費・家賃など全部</small></label>${yenInput('exp',b.exp)}</div>
+        <div id="m_ytd" style="display:${b.mode==='ytd'?'block':'none'}"><label>試算表は何月まで</label><select id="month">${Array.from({length:11},(_,k)=>k+1).map(n=>`<option value="${n}" ${b.month===n?'selected':''}>${n}月まで</option>`).join('')}</select>
+          <label>売上の累計</label>${yenInput('ytdSales',b.ytdSales)}<label>経費の累計</label>${yenInput('ytdExp',b.ytdExp)}
+          <label>残りの月はどう見ますか</label>${big('ytdMethod',[['annualize','今までと同じ調子（12か月換算）'],['remain','残りの月の利益を自分で見込む']],b.ytdMethod)}
+          <div id="m_remain" style="display:${b.ytdMethod==='remain'?'block':'none'}"><label>残りの月の利益（1か月あたり）</label>${yenInput('remainMonthly',b.remainMonthly,'今までの月平均')}</div></div>
+        <label>青色申告特別控除</label><select id="aoiro">${aoiroOpts()}</select>
+        <p class="note noprint" style="margin-top:14px"><a href="#" id="toPhoto" style="color:var(--cd);font-weight:700">試算表の画像を読み取る（代わりに写真で入れる）</a></p>`; },
+      mount:()=>{ bindOcr(); const tp=$('#toPhoto'); if(tp) tp.onclick=e=>{e.preventDefault(); S.biz.src='photo'; render();}; const tm=$('#toManual'); if(tm) tm.onclick=e=>{e.preventDefault(); S.biz.src='manual'; render();};
+        document.querySelectorAll('[data-k=bizmode]').forEach(x=>x.addEventListener('click',()=>{$('#m_annual').style.display=x.dataset.v==='annual'?'block':'none';$('#m_ytd').style.display=x.dataset.v==='ytd'?'block':'none';}));
+        document.querySelectorAll('[data-k=ytdMethod]').forEach(x=>x.addEventListener('click',()=>{$('#m_remain').style.display=x.dataset.v==='remain'?'block':'none';})); },
+      next:()=>{ const b=S.biz; b.aoiro=+$('#aoiro').value; if(b.src==='photo'){ if(!b.suiiRead) throw new Error('推移損益を撮るか、「手入力に戻る」で入れてください'); return; }
+        b.mode=pick('bizmode'); if(!b.mode) throw new Error('どちらかを選んでください');
+        if(b.mode==='annual'){ b.sales=toNum($('#sales').value); b.exp=toNum($('#exp').value); if(!b.sales) throw new Error('年間の売上を入れてください'); }
+        else { b.month=+$('#month').value; b.ytdSales=toNum($('#ytdSales').value); b.ytdExp=toNum($('#ytdExp').value); b.ytdMethod=pick('ytdMethod')||'annualize'; const rm=toNum($('#remainMonthly').value); b.remainMonthly=rm||null; if(!b.ytdSales) throw new Error('売上の累計を入れてください'); } }});
+    if(S.biz.src==='photo'&&S.biz.suiiRead) s.push({id:'method', t:'残りの月の見込み', html:()=>{ const f=bizForecast(); const opts=[[4,'12か月換算',`${yen(f.m[4])}　迷ったらこれ`],[1,'直近3か月の平均で伸ばす',`${yen(f.m[1])}　最近の調子が続くなら`]]; if(f.hasPrev) opts.push([3,'前年の同じ月を足す',`${yen(f.m[3])}　前年と同じ動きなら`]); return `<p>1〜${f.el}月の所得 ${yen(f.cum)}。残りをどう見ますか。</p>${big('method',opts.map(o=>[String(o[0]),o[1],o[2]]),String(S.biz.method))}`; },
       next:()=>{ const v=pick('method'); if(!v) throw new Error('どれかを選んでください'); S.biz.method=+v; }});
-    s.push({id:'vat', t:'消費税', html:()=>{ const v=S.biz.vat; return `<p>消費税の申告の仕方を選んでください。</p>${big('vatmode',[['kani','簡易課税'],['honsoku','本則課税'],['niwari','2割特例'],['menzei','免税（申告しない）']],v.mode)}
-      <div id="vatbox" style="display:${v.mode==='menzei'?'none':'block'}"><label>経理の方法</label><select id="vatacc"><option value="nuki" ${v.acc==='nuki'?'selected':''}>税抜経理</option><option value="komi" ${v.acc==='komi'?'selected':''}>税込経理</option></select>
-      <div id="minashibox" style="display:${v.mode==='kani'?'block':'none'}"><label>みなし仕入率</label><select id="minashi">${[[0.9,'第1種 90%'],[0.8,'第2種 80%'],[0.7,'第3種 70%'],[0.6,'第4種 60%'],[0.5,'第5種 50%'],[0.4,'第6種 40%']].map(([k,l])=>`<option value="${k}" ${v.minashi===k?'selected':''}>${l}</option>`).join('')}</select></div>
-      <details ${v.out?'open':''}><summary>仮受・仮払消費税が分かる（消費税額試算表）</summary><label>仮受消費税（今年の累計）</label>${yenInput('vatout',v.out)}<label>仮払消費税（今年の累計）</label>${yenInput('vatin',v.inn)}<div class="note">年末の精算差益を所得に加えます。分からなければ空のままで結構です。</div></details></div>`; },
-      mount:()=>{ document.querySelectorAll('[data-k=vatmode]').forEach(b=>b.addEventListener('click',()=>{$('#vatbox').style.display=b.dataset.v==='menzei'?'none':'block';$('#minashibox').style.display=b.dataset.v==='kani'?'block':'none';})); },
-      next:()=>{ const v=S.biz.vat; v.mode=pick('vatmode')||'kani'; v.acc=$('#vatacc').value; v.minashi=+$('#minashi').value; v.out=toNum($('#vatout').value); v.inn=toNum($('#vatin').value); }});
+    s.push({id:'vat', t:'消費税', html:()=>{ const v=S.biz.vat; return `<p>消費税の申告の仕方</p>${big('vatmode',[['kani','簡易課税'],['honsoku','本則課税'],['niwari','2割特例'],['menzei','免税（申告しない）']],v.mode)}
+      <div id="vatbox" style="display:${v.mode==='menzei'?'none':'block'}"><label>帳簿の付け方</label>${big('vatacc',[['komi','税込で付けている','売上・経費に消費税が含まれている'],['nuki','税抜で付けている','仮受・仮払消費税の科目がある']],v.acc)}
+      <div id="paidbox" style="display:${v.acc==='komi'?'block':'none'}"><label>消費税の納付額は、経費（租税公課）に入れていますか</label>${big('paidBooked',[['no','入れていない（年に1回払うだけ）'],['yes','毎月入れている']],v.paidBooked)}</div>
+      <div id="minashibox" style="display:${v.mode==='kani'?'block':'none'}"><label>みなし仕入率</label><select id="minashi">${[[0.9,'第1種 90%（卸売）'],[0.8,'第2種 80%（小売）'],[0.7,'第3種 70%（製造・建設）'],[0.6,'第4種 60%（飲食など）'],[0.5,'第5種 50%（サービス）'],[0.4,'第6種 40%（不動産）']].map(([k,l])=>`<option value="${k}" ${v.minashi===k?'selected':''}>${l}</option>`).join('')}</select></div>
+      <details ${v.out?'open':''}><summary>仮受・仮払消費税が分かる（消費税額試算表）</summary><label>仮受消費税（今年の累計）</label>${yenInput('vatout',v.out)}<label>仮払消費税（今年の累計）</label>${yenInput('vatin',v.inn)}<div class="note">無ければ売上・経費から概算します。</div></details></div>`; },
+      mount:()=>{ document.querySelectorAll('[data-k=vatmode]').forEach(b=>b.addEventListener('click',()=>{$('#vatbox').style.display=b.dataset.v==='menzei'?'none':'block';$('#minashibox').style.display=b.dataset.v==='kani'?'block':'none';})); document.querySelectorAll('[data-k=vatacc]').forEach(b=>b.addEventListener('click',()=>{$('#paidbox').style.display=b.dataset.v==='komi'?'block':'none';})); },
+      next:()=>{ const v=S.biz.vat; v.mode=pick('vatmode')||'kani'; v.acc=pick('vatacc')||'komi'; v.paidBooked=pick('paidBooked')||'no'; v.minashi=+$('#minashi').value; v.out=toNum($('#vatout').value); v.inn=toNum($('#vatin').value); }});
     s.push({id:'shinkoku', t:'前年の確定申告書', html:()=>`<p>前年の<b>確定申告書（第一表・第二表）</b>を撮ってください。所得控除をそのまま使います。</p>
       <label class="cam">📷 申告書を撮る（写真・PDF）<input type="file" accept="image/*,application/pdf" data-ocr="shinkoku" multiple></label>
       ${S.biz.shinkokuRead?`<div class="ok">読み取りました：社会保険料 <b>${yen(S.kokuho+S.nenkin+S.shEtc+(S.kyuyo||0))}</b>、共済・iDeCo <b>${yen(S.kyosai)}</b>、生命保険料 <b>${yen(S.life.new+S.life.old+S.life.care+S.life.pnew+S.life.pold)}</b>${S.prevFurusato?`、前年の寄附 <b>${yen(S.prevFurusato)}</b>`:''}<br><span class="note">次の画面で直せます</span></div>`:'<p class="note">手元になければ、そのまま「次へ」。次の画面で入れます。</p>'}
-      <label>青色申告特別控除</label><select id="aoiro">${[[650000,'65万円'],[550000,'55万円'],[100000,'10万円'],[0,'なし（白色）']].map(([k,l])=>`<option value="${k}" ${S.biz.aoiro===k?'selected':''}>${l}</option>`).join('')}</select>
       <details><summary>給与や年金もある</summary><label>給与の年収</label>${yenInput('salary',S.salary)}<label>年金（年間）</label>${yenInput('pension',S.pension)}<div class="chk"><input type="checkbox" id="over65" ${S.over65?'checked':''}><span>65歳以上</span></div></details>`,
-      mount:()=>bindOcr(), next:()=>{ S.biz.aoiro=+$('#aoiro').value; S.salary=toNum($('#salary').value); S.pension=toNum($('#pension').value); S.over65=$('#over65').checked; }});
+      mount:()=>bindOcr(), next:()=>{ S.salary=toNum($('#salary').value); S.pension=toNum($('#pension').value); S.over65=$('#over65').checked; }});
   }
   // 共通：家族
   s.push({id:'family', t:'配偶者・家族', html:()=>`<p>配偶者はいますか。</p>${big('hasSpouse',[['no','いない'],['yes','いる']],S.hasSpouse)}
@@ -155,7 +181,7 @@ function buildSteps(){
 }
 function resultHtml(){
   const i=calcInput(); const r=FurusatoCalc.calcLimit(i); const f=S.mode==='biz'?bizForecast():null;
-  const w=[...r.warnings]; if(S.mode==='salary'&&S.kyuyo==null) w.push('社会保険料は年収×15.5%の概算です。'); if(S.fromNencho&&!S.certsRead) w.push('保険料の証明書はまだ読み取られていません。去年と同じくらいの額を入れると近づきます。'); if(f&&f.el&&f.el<12&&S.biz.manual==null) w.push(`1〜${f.el}月の実績から残りを見込んでいます。年末の受注や在庫で変わります。`); if(S.prevFurusato) w.push(`前年の寄附は ${yen(S.prevFurusato)} でした。`);
+  const w=[...r.warnings]; if(S.mode==='salary'&&S.kyuyo==null) w.push('社会保険料は年収×15.5%の概算です。'); if(S.fromNencho&&!S.certsRead) w.push('保険料の証明書はまだ読み取られていません。去年と同じくらいの額を入れると近づきます。'); if(f&&f.el&&f.el<12) w.push(`${f.label}。年末の受注や在庫で変わります。`); if(f&&f.diff&&f.estimated) w.push(`消費税の精算分 ${yen(f.diff)} は売上・経費からの概算です。`); if(S.prevFurusato) w.push(`前年の寄附は ${yen(S.prevFurusato)} でした。`);
   const rows=[]; if(f) rows.push(['事業所得の見込み（控除前）',f.pre],['青色申告特別控除',-f.aoiro]); if(S.salary) rows.push(['給与所得',r.salaryIncome]); if(S.pension||S.otherIncome) rows.push(['年金・その他の所得',r.pensionIncome+S.otherIncome]);
   rows.push(['合計所得金額',r.gokei],['所得控除（所得税／住民税）',fmt(r.ded)+' ／ '+fmt(r.dedJ)],['課税所得（住民税）',r.kazeiJ],['所得税の税率',(r.rate*100).toFixed(0)+'%'],['住民税 所得割額',r.shotokuwari],['特例分の上限（20%）',r.tokurei]);
   if(f&&f.diff) rows.splice(1,0,['消費税の精算差益',f.diff]);
@@ -163,7 +189,7 @@ function resultHtml(){
     <div class="safe"><span class="s">安全をみて</span><select id="safety">${[[0.9,'90%'],[0.85,'85%'],[0.8,'80%'],[0.7,'70%']].map(([k,l])=>`<option value="${k}" ${S.safety===k?'selected':''}>${l}</option>`).join('')}</select><b>${r.limit>0?yen(r.safe(S.safety)):'—'}</b></div>
     ${w.map(x=>`<div class="hint" style="text-align:left">${x}</div>`).join('')}</div>
     <div class="card"><p class="note">すべて概算です。限度額ぎりぎりの寄附は避けてください。この目安は事務所が保証するものではありません。</p>
-    <p class="note noprint" style="margin:10px 0 4px">数字を直す</p><div class="row noprint"><button class="b2 sm" data-go="${S.mode==='salary'?'salary':'suii'}">収入</button><button class="b2 sm" data-go="family">家族</button><button class="b2 sm" data-go="ins">保険料</button></div></div>
+    <p class="note noprint" style="margin:10px 0 4px">数字を直す</p><div class="row noprint"><button class="b2 sm" data-go="${S.mode==='salary'?'salary':'biz'}">収入</button><button class="b2 sm" data-go="family">家族</button><button class="b2 sm" data-go="ins">保険料</button></div></div>
     <div class="card"><details><summary>計算の内訳</summary><table class="kv">${rows.map(([k,v])=>`<tr><td>${k}</td><td>${typeof v==='number'?fmt(v):v}</td></tr>`).join('')}</table><p class="note">限度額 ＝ 所得割額×20% ÷（90%−所得税率×1.021）＋2,000円</p></details>
     <button class="b3 sm noprint" style="margin-top:8px" onclick="window.print()">印刷・保存</button>${S.fromNencho?'<a href="../" class="b3 sm" style="margin-left:8px;text-decoration:none;display:inline-block">年末調整に戻る</a>':''}</div>`;
 }
@@ -173,8 +199,8 @@ function wait(on,msg){ $('#wait').style.display=on?'flex':'none'; if(msg)$('#wai
 async function shrink(file){ if(!/^image\//.test(file.type)) return file; let bmp; try{ bmp=await createImageBitmap(file,{imageOrientation:'from-image'}); }catch(e){ return file; } const sc=Math.min(1,2000/Math.max(bmp.width,bmp.height)); if(sc===1&&file.size<1500000) return file; const cv=document.createElement('canvas'); cv.width=Math.round(bmp.width*sc); cv.height=Math.round(bmp.height*sc); cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height); return await new Promise(r=>cv.toBlob(b=>r(b||file),'image/jpeg',0.9)); }
 function bindOcr(){ document.querySelectorAll('[data-ocr]').forEach(inp=>inp.onchange=async()=>{ const kind=inp.dataset.ocr; for(const f0 of [...inp.files]){ wait(true, kind==='suii'?'推移損益を読み取っています':'申告書を読み取っています'); try{ const f=await shrink(f0); const fd=new FormData(); fd.append('file',f,f0.name||'photo.jpg'); fd.append('kind',kind); fd.append('year',S.year); const res=await fetch('ocr.php',{method:'POST',body:fd}); const j=await res.json(); if(!j.ok) throw new Error(j.error||'読み取れませんでした'); if(kind==='suii') applySuii(j.data); else applyShinkoku(j.data); }catch(e){ wait(false); alert(e.message); } } wait(false); inp.value=''; render(); }); }
 function applySuii(d){ if(d.doc_type!=='suii') throw new Error('推移損益（推移試算表）ではないようです'); const y=d.year; let which; if(y==null||y===S.year) which='cur'; else if(y===S.year-1) which='prev'; else throw new Error(`令和${y-2018}年の表です。今年か前年の表を撮ってください`);
-  const inc=d.income||[]; S.biz[which]=Array.from({length:12},(_,k)=>inc[k]==null?null:Math.round(inc[k]));
-  if(which==='cur'){ let lm=d.to_month; if(!lm){ for(let m=12;m>=1;m--) if(inc[m-1]!=null){lm=m;break} } S.biz.elapsed=lm||0; S.biz.suiiRead=true; S.biz.manual=null; if(d.name&&!S.name)S.name=d.name; } }
+  const inc=d.income||[]; S.biz[which]=Array.from({length:12},(_,k)=>inc[k]==null?null:Math.round(inc[k])); if(which==='cur'&&d.sales) S.biz.curSales=Array.from({length:12},(_,k)=>d.sales[k]==null?null:Math.round(d.sales[k]));
+  if(which==='cur'){ let lm=d.to_month; if(!lm){ for(let m=12;m>=1;m--) if(inc[m-1]!=null){lm=m;break} } S.biz.elapsed=lm||0; S.biz.suiiRead=true; S.biz.src='photo'; if(d.name&&!S.name)S.name=d.name; } }
 function applyShinkoku(d){ if(d.doc_type!=='shinkoku') throw new Error('確定申告書ではないようです'); const f=d.first||{}, s2=d.second||{}, pr=s2.premiums||{};
   let kokuho=0,nenkin=0,kyuyo=0,etc=0; for(const it of (s2.shaho_items||[])){ const a=+it.amount||0,t=it.type||''; if(/国民健康保険|後期高齢|介護保険/.test(t))kokuho+=a; else if(/国民年金/.test(t))nenkin+=a; else if(/健康保険|厚生年金|雇用保険/.test(t))kyuyo+=a; else etc+=a; }
   if(f.shaho!=null){ const rest=f.shaho-kokuho-nenkin-kyuyo-etc; if(kokuho+nenkin+kyuyo+etc===0) etc=f.shaho; else if(rest>0) etc+=rest; }
