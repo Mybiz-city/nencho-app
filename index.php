@@ -378,7 +378,7 @@ function loginView(msg){
   $('#nav').style.display='none';
   view.innerHTML = `<div class="card"><h1>登録コードを入力</h1><p>会社または事務所から配られた<b>登録コード</b>を入れてください。初回だけ必要です。</p><input type="tel" id="code" inputmode="numeric" placeholder="例：0302000001" style="font-size:24px;letter-spacing:.08em;text-align:center"><div class="note" style="text-align:center">数字だけ（10桁）。LINEやメールで届いたコードを貼り付けてください。</div><div id="lbirth" style="display:none"><label>ご本人の生年月日（本人確認）</label>${dateInput('lbd','',{noAge:true})}</div><div class="err" id="lerr">${esc(msg||'')}</div><div class="btns"><button class="b1" id="login">始める</button></div><p class="note" style="margin-top:14px">コードが分からないときは、お勤め先かメーティス税理士法人にお尋ねください。</p></div>`;
   bindAllDates();
-  $('#login').onclick = async()=>{ try{ const j=await api('login',{code:$('#code').value, birth:$('#lbd').value, line_user_id: lineUid}); if(j.need_birth){ $('#lbirth').style.display='block'; $('#lerr').textContent='本人確認のため、生年月日を入れてください'; $('#lbd').focus(); return; } start(); }catch(e){ $('#lerr').textContent=e.message; } };
+  $('#login').onclick = async()=>{ try{ const j=await api('login',{code:$('#code').value, birth:$('#lbd').value, line_user_id: lineUid}); if(j.need_birth){ $('#lbirth').style.display='block'; $('#lerr').textContent = j.first ? '初めてのご利用です。ご本人の生年月日を登録してください（次回からの本人確認に使います）' : '本人確認のため、生年月日を入れてください'; return; } start(); }catch(e){ $('#lerr').textContent=e.message; } };
 }
 function start(){
   $('#who').textContent = (R.answers.name || (R.prev&&R.prev.sei? R.prev.sei+' '+R.prev.mei:'')) + ' さん'; $('#menu').style.display='inline-block';

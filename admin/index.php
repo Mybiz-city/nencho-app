@@ -194,6 +194,7 @@ if (($_POST['act'] ?? '') === 'reset_emp') {
 if (($_POST['act'] ?? '') === 'note') {
     $r = load_record(preg_replace('/\D/', '', (string)$_POST['client']), (string)$_POST['emp']);
     $r['office_note'] = trim((string)$_POST['note']);
+    if (!empty($_POST['birth']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$_POST['birth'])) { $r['answers']['birth'] = (string)$_POST['birth']; $r['birth_set_by'] = 'office'; audit("birth set by office {$r['client']}-{$r['emp']}"); }
     if (!empty($_POST['checked'])) $r['office_checked_at'] = date('c'); else unset($r['office_checked_at']);
     save_record($r); $msg = '保存しました';
 }
@@ -331,7 +332,8 @@ else {
 <div class="card"><h2><?= $h("$client-$emp") ?>　<?= $h($a['name'] ?? (($p['sei'] ?? '') . ' ' . ($p['mei'] ?? ''))) ?>　<span class="st <?= $r['status'] ?>"><?= $r['status'] ?></span></h2>
 <p><small>同意 <?= $h($r['consent_at'] ?? '—') ?>　提出 <?= $h($r['submitted_at'] ?? '—') ?>　LINE連携 <?= $r['line_user_id'] ? 'あり' : 'なし' ?></small></p>
 <form method="post"><?= csrf_field() ?><input type="hidden" name="act" value="note"><input type="hidden" name="client" value="<?= $client ?>"><input type="hidden" name="emp" value="<?= $h($emp) ?>">
-<label><input type="checkbox" name="checked" <?= !empty($r['office_checked_at']) ? 'checked' : '' ?>> 事務所で確認した</label>　<input type="text" name="note" value="<?= $h($r['office_note'] ?? '') ?>" placeholder="メモ" size="40">　<button>保存</button></form>
+<label><input type="checkbox" name="checked" <?= !empty($r['office_checked_at']) ? 'checked' : '' ?>> 事務所で確認した</label>　<input type="text" name="note" value="<?= $h($r['office_note'] ?? '') ?>" placeholder="メモ" size="40">
+　<small>本人確認用の生年月日：<?= $h($a['birth'] ?? ($p['birth'] ?? '未登録（初回ログイン時に本人が登録）')) ?><?= !empty($r['birth_set_by']) ? '（' . ($r['birth_set_by'] === 'employee' ? '本人が登録' : '事務所が登録') . '）' : '' ?>　登録・訂正：<input type="date" name="birth"></small>　<button>保存</button></form>
 <form method="post" style="margin-top:8px" onsubmit="return confirm('この人の今年の入力と写真をすべて消します。前年は残ります。よろしいですか？')"><?= csrf_field() ?><input type="hidden" name="act" value="reset_emp"><input type="hidden" name="client" value="<?= $client ?>"><input type="hidden" name="emp" value="<?= $h($emp) ?>"><button class="g" style="background:#C8372D">今年の入力をリセット</button></form>
 </div>
 <div class="card"><h2>本人が訂正した項目</h2><?php if (empty($r['changes'])) echo '<p><small>なし</small></p>'; else { echo '<ul>'; foreach ($r['changes'] as $ch) echo '<li><small>' . $h(date('m/d H:i', strtotime($ch['at']))) . '</small> ' . $h($ch['what']) . '</li>'; echo '</ul>'; } ?></div>

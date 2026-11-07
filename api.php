@@ -51,10 +51,15 @@ switch ($action) {
         $ro = json_load(emp_dir($p['client'], $emp, false) . '/roster.json', []);
         if (($ro['status'] ?? 'active') === 'retired') fail('退職された方は、この会社の年末調整の対象外です。源泉徴収票をもとにご自身で確定申告をしてください');
         $knownBirth = $r0['answers']['birth'] ?? ($r0['prev']['birth'] ?? null);
+        $b = (string)($in['birth'] ?? '');
         if ($knownBirth) {
-            $b = (string)($in['birth'] ?? '');
             if ($b === '') json_out(['ok' => true, 'need_birth' => true]);
             if ($b !== $knownBirth) { throttle_fail($tk, 10); throttle_fail($tk2, 5); audit("birth mismatch $tk2"); usleep(500000); fail('生年月日が登録と一致しません'); }
+        } else {
+            // 生年月日が未登録の人（今年入社など）：初回に本人が登録し、以後はそれで照合する
+            if ($b === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $b)) json_out(['ok' => true, 'need_birth' => true, 'first' => true]);
+            $r0['answers']['birth'] = $b; $r0['birth_set_by'] = 'employee'; $r0['birth_set_at'] = date('c');
+            audit("birth registered by employee {$p['client']}-$emp");
         }
         throttle_clear($tk2); audit("login ok {$p['client']}-$emp");
         session_regenerate_id(true);
