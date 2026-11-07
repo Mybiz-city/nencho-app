@@ -126,11 +126,11 @@ function compute(array $r): array {
     $fam = [];
     $counts = [];
     $adjustTarget = null;
-    $removeReasons = ['job', 'marriage', 'divorce', 'abroad_out', 'other_support', 'income', 'other'];
     foreach ($r['family'] ?? [] as $f) {
-        if (!empty($f['change']['reason']) && in_array($f['change']['reason'], $removeReasons, true)) continue; // 今年扶養から外れた人
+        if (($f['change']['kind'] ?? '') === 'out') continue; // 今年扶養から出た人
         if (($f['supporter'] ?? 'self') !== 'self') { $f['class'] = '他者'; $fam[] = $f; continue; }
         $cls = dependent_class($f, $self['total_income']);
+        if (($f['living'] ?? '') === 'apart' && ($f['remit_domestic'] ?? '') === 'no' && $cls !== '対象外') { $cls = '対象外'; $f['note'] = '別居で仕送りがないため、扶養の条件（生計を一にする）を満たしません'; }
         $f['class'] = $cls;
         $f['age'] = age_at_year_end($f['birth'] ?? null);
         $f['income'] = income_to_shotoku($f['incomes'] ?? [], $f['age']);

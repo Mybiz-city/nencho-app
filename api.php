@@ -45,8 +45,15 @@ switch ($action) {
         if (!is_dir(data_dir() . '/' . $p['client'])) fail('この登録コードの会社は、まだ登録されていません。事務所にご確認ください');
         $emp = resolve_emp($p['client'], $p['num']);
         if (!$emp) fail('この登録コードは見つかりません。数字をもう一度ご確認ください');
+        $r0 = load_record($p['client'], $emp);
+        $knownBirth = $r0['answers']['birth'] ?? ($r0['prev']['birth'] ?? null);
+        if ($knownBirth) {
+            $b = (string)($in['birth'] ?? '');
+            if ($b === '') json_out(['ok' => true, 'need_birth' => true]);
+            if ($b !== $knownBirth) { usleep(500000); fail('生年月日が登録と一致しません'); }
+        }
         $_SESSION['client'] = $p['client']; $_SESSION['emp'] = $emp;
-        $r = load_record($p['client'], $emp);
+        $r = $r0;
         $uid = trim((string)($in['line_user_id'] ?? ''));
         if ($uid !== '') {
             $map = json_load(line_map_path(), []);
