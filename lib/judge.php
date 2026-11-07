@@ -126,7 +126,9 @@ function compute(array $r): array {
     $fam = [];
     $counts = [];
     $adjustTarget = null;
+    $removeReasons = ['job', 'marriage', 'divorce', 'abroad_out', 'other_support', 'income', 'other'];
     foreach ($r['family'] ?? [] as $f) {
+        if (!empty($f['change']['reason']) && in_array($f['change']['reason'], $removeReasons, true)) continue; // 今年扶養から外れた人
         if (($f['supporter'] ?? 'self') !== 'self') { $f['class'] = '他者'; $fam[] = $f; continue; }
         $cls = dependent_class($f, $self['total_income']);
         $f['class'] = $cls;

@@ -37,8 +37,14 @@ const CERT_PROMPT = <<<'TXT'
 - 証明書でないもの（口座振替のお知らせ、契約内容の通知、レシートなど）が写っている場合は doc_type を other にし、items は空にする。
 TXT;
 
+const TECHO_PROMPT = <<<'TXT'
+写真は日本の障害者手帳（身体障害者手帳・療育手帳・精神障害者保健福祉手帳）または障害者控除に使う書類です。次のJSONだけを返してください。
+{"techo": {"holder": "手帳の氏名", "type": "身体障害者手帳" | "療育手帳" | "精神障害者保健福祉手帳" | "その他", "grade": "等級（例：1級、A、2級）", "class": "種別（例：第1種）。無ければ空", "special": true | false, "confidence": "high" | "medium" | "low"}}
+special は、特別障害者に当たる可能性（身体1級・2級、療育A、精神1級など）なら true。写真が手帳でなければ type を "その他" にする。
+TXT;
+
 /** 画像ファイル → 読み取り結果（配列）。失敗は例外 */
-function claude_read_cert(string $imagePath): array {
+function claude_read_cert(string $imagePath, string $kind = 'cert'): array {
     $c = cfg();
     if (empty($c['anthropic_api_key'])) throw new RuntimeException('AI読み取りは設定されていません');
     $mime = mime_content_type($imagePath) ?: 'image/jpeg';
@@ -51,7 +57,7 @@ function claude_read_cert(string $imagePath): array {
             'role' => 'user',
             'content' => [
                 ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $mime, 'data' => $b64]],
-                ['type' => 'text', 'text' => CERT_PROMPT],
+                ['type' => 'text', 'text' => $kind === 'techo' ? TECHO_PROMPT : CERT_PROMPT],
             ],
         ]],
     ];
@@ -73,6 +79,7 @@ function claude_read_cert(string $imagePath): array {
     if (preg_match('/\{.*\}/s', $text, $m)) $text = $m[0];
     $out = json_decode($text, true);
     if (!is_array($out)) throw new RuntimeException('読み取り結果を解釈できませんでした');
+    if ($kind === 'techo') { $out['items'] = []; $out['usage'] = $j['usage'] ?? null; return $out; }
     $out['items'] = array_values(array_filter($out['items'] ?? [], fn($i) => is_array($i)));
     foreach ($out['items'] as &$it) { $it['amount'] = yen((string)($it['amount'] ?? 0)); $it['contract'] = $it['contract'] ?? ''; $it['confidence'] = $it['confidence'] ?? 'medium'; }
     $out['usage'] = $j['usage'] ?? null;

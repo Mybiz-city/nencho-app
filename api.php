@@ -102,6 +102,19 @@ switch ($action) {
         // ドライブへ
         try { $entry['drive_id'] = drive_upload($c, $e, $dest, $name, "image/$ext"); } catch (Throwable $ex) { $entry['drive_error'] = $ex->getMessage(); }
         // AI読み取り（証明書のときだけ）
+        if ($kind === 'techo' && !empty(cfg()['anthropic_api_key'])) {
+            try { $ai = claude_read_cert($dest, 'techo'); $entry['ai'] = $ai; $entry['status'] = 'read';
+                  // 本人の手帳なら、種類・等級を本人の欄に入れる（空のときだけ）
+                  $t = $ai['techo'] ?? []; $txt = trim(($t['type'] ?? '') . ' ' . ($t['grade'] ?? ''));
+                  if ($txt !== '' && ($t['type'] ?? '') !== 'その他') {
+                      $selfName = str_replace([' ', '　'], '', $r['answers']['name'] ?? (($r['prev']['sei'] ?? '') . ($r['prev']['mei'] ?? '')));
+                      $holder = str_replace([' ', '　'], '', (string)($t['holder'] ?? ''));
+                      if ($holder === '' || $holder === $selfName) { if (empty($r['answers']['self_flags']['disability_text'])) $r['answers']['self_flags']['disability_text'] = $txt; }
+                      else { foreach ($r['family'] as &$ff) if (str_replace([' ', '　'], '', $ff['name'] ?? '') === $holder && empty($ff['disability_text'])) $ff['disability_text'] = $txt; unset($ff);
+                             if (str_replace([' ', '　'], '', $r['answers']['spouse']['name'] ?? '') === $holder && empty($r['answers']['spouse']['disability_text'])) $r['answers']['spouse']['disability_text'] = $txt; }
+                  }
+            } catch (Throwable $ex) { $entry['status'] = 'read_failed'; $entry['error'] = $ex->getMessage(); }
+        }
         if ($kind === 'cert' && !empty(cfg()['anthropic_api_key'])) {
             try {
                 $ai = claude_read_cert($dest);
