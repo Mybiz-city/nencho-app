@@ -104,6 +104,11 @@ details summary{cursor:pointer;color:var(--cd);font-weight:700;font-size:14px;ma
     <div><label>同居老親</label><div class="note" style="margin:-2px 0 4px;min-height:1.6em">70歳以上の親と同居</div><select id="doukyo"><option value="0">0人</option><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option><option value="9">9人</option></select></div>
   </div>
   <p class="note">16歳未満の子は人数に入れません。年収123万円（所得58万円）を超える家族も入れません。</p>
+  <details id="sprDetails"><summary>19〜22歳で年収123万円超〜188万円以下の子がいる（特定親族特別控除）</summary>
+    <label>人数</label><select id="sprCount"><option value="0">0人</option><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option></select>
+    <div id="sprBox"></div>
+    <p class="note">年収（税込の総支給額）を入れてください。所得に直して控除額を出します。</p>
+  </details>
   <details><summary>障害者・寡婦・ひとり親・勤労学生に当てはまる人がいる</summary>
     <div class="cnt">
       <div><label>障害者</label><div class="note" style="margin:-2px 0 4px;min-height:1.6em"></div><select id="shogai"><option value="0">0人</option><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option><option value="9">9人</option></select></div>
@@ -167,22 +172,25 @@ function gather(){
     iryo:num('iryo'), zasson:num('zasson'), loanBalance:num('loanBalance'),
     spouseIncome:$('hasSpouse').value==='yes'?num('spouseIncome'):null, spouseOver70:$('spouseOver70').checked,
     dependents:{ippan:num('ippan'), tokutei:num('tokutei'), rojin:num('rojin'), doukyo:num('doukyo')},
+    specialRelatives:[...document.querySelectorAll('#sprBox input')].map(e=>FurusatoCalc.salaryIncome(parseFloat(String(e.value).replace(/[^\d]/g,''))||0)),
     personal:{shogai:num('shogai'), tokubetsu:num('tokubetsu'), doukyoTokubetsu:num('doukyoTokubetsu'), kafu:$('kafu').checked?1:0, hitorioya:$('hitorioya').checked?1:0, gakusei:$('gakusei').checked?1:0}};
 }
+function sprRows(n, vals){ vals=vals||[]; $('sprBox').innerHTML=Array.from({length:n},(_,k)=>`<label>${k+1}人目の年収</label><div class="yen"><input type="tel" class="spr" value="${vals[k]!=null?Math.round(vals[k]).toLocaleString('ja-JP'):''}"></div>`).join(''); document.querySelectorAll('#sprBox input').forEach(e=>e.addEventListener('input',()=>{const d=e.value.replace(/[^\d]/g,'');e.value=d?Number(d).toLocaleString('ja-JP'):'';calc();})); }
+$('sprCount').addEventListener('change',()=>{ sprRows(+$('sprCount').value); calc(); });
 function calc(){
   $('spBox').style.display=$('hasSpouse').value==='yes'?'block':'none';
   if(kyuyoAuto){ setYen('kyuyo', Math.round(num('salary')*0.155)); $('kyuyoTag').style.display='inline-block'; } else $('kyuyoTag').style.display='none';
   const i=gather(); const r=FurusatoCalc.calcLimit(i);
   $('limit').textContent = r.limit>0 ? fmt(r.limit)+' 円' : '—';
   $('limitSafe').textContent = r.limit>0 ? fmt(r.safe(parseFloat($('safety').value)))+' 円' : '—';
-  const rows=[['給与所得（給与所得控除後）',r.salaryIncome],['年金・その他の所得',r.pensionIncome+i.otherIncome],['合計所得金額',r.gokei],['社会保険料控除',r.shaho],['生命保険料控除（所得税／住民税）',fmt(r.life.s)+' ／ '+fmt(r.life.j)],['地震保険料控除（所得税／住民税）',fmt(r.quake.s)+' ／ '+fmt(r.quake.j)],['配偶者（特別）控除（所得税／住民税）',fmt(r.spouse.s)+' ／ '+fmt(r.spouse.j)],['扶養控除（所得税／住民税）',fmt(r.dependents.s)+' ／ '+fmt(r.dependents.j)],['基礎控除（所得税／住民税）',fmt(r.kiso)+' ／ '+fmt(r.kisoJ)],['所得控除の合計（所得税／住民税）',fmt(r.ded)+' ／ '+fmt(r.dedJ)],['課税所得（所得税）',r.kazei],['課税所得（住民税）',r.kazeiJ],['所得税の限界税率',(r.rate*100).toFixed(0)+'%'],['住民税 調整控除',-r.chosei],['住宅ローン控除（住民税側）',-r.loanJ],['住民税 所得割額',r.shotokuwari],['特例分の上限（所得割×20%）',r.tokurei],['所得税（参考・復興税込）',r.incomeTaxAmount],['住民税（参考・均等割込）',r.residentTax]];
+  const rows=[['給与所得（給与所得控除後）',r.salaryIncome],['年金・その他の所得',r.pensionIncome+i.otherIncome],['合計所得金額',r.gokei],['社会保険料控除',r.shaho],['生命保険料控除（所得税／住民税）',fmt(r.life.s)+' ／ '+fmt(r.life.j)],['地震保険料控除（所得税／住民税）',fmt(r.quake.s)+' ／ '+fmt(r.quake.j)],['配偶者（特別）控除（所得税／住民税）',fmt(r.spouse.s)+' ／ '+fmt(r.spouse.j)],['扶養控除（所得税／住民税）',fmt(r.dependents.s)+' ／ '+fmt(r.dependents.j)],['特定親族特別控除（所得税／住民税）',fmt(r.specialRelatives.s)+' ／ '+fmt(r.specialRelatives.j)],['基礎控除（所得税／住民税）',fmt(r.kiso)+' ／ '+fmt(r.kisoJ)],['所得控除の合計（所得税／住民税）',fmt(r.ded)+' ／ '+fmt(r.dedJ)],['課税所得（所得税）',r.kazei],['課税所得（住民税）',r.kazeiJ],['所得税の限界税率',(r.rate*100).toFixed(0)+'%'],['住民税 調整控除',-r.chosei],['住宅ローン控除（住民税側）',-r.loanJ],['住民税 所得割額',r.shotokuwari],['特例分の上限（所得割×20%）',r.tokurei],['所得税（参考・復興税込）',r.incomeTaxAmount],['住民税（参考・均等割込）',r.residentTax]];
   $('detail').innerHTML=rows.map(([k,v])=>`<tr><td>${k}</td><td>${typeof v==='number'?fmt(v):v}</td></tr>`).join('');
   const w=[...r.warnings];
   if(i.salary>0&&kyuyoAuto) w.push('社会保険料は年収×15.5%の概算です。');
   if(fromNencho&&!certsRead) w.push('保険料の証明書はまだ読み取られていません。去年と同じくらいの額を「4. 保険料・掛金」に入れると近づきます。');
   $('warnBox').innerHTML=w.map(s=>`<div class="warn" style="text-align:left">${s}</div>`).join('');
 }
-function resetAll(){ document.querySelectorAll('input[type=tel],input[type=text]').forEach(e=>e.value=''); document.querySelectorAll('.cnt select').forEach(e=>e.value='0'); document.querySelectorAll('input[type=checkbox]').forEach(e=>e.checked=false); $('hasSpouse').value='no'; kyuyoAuto=true; fromNencho=false; certsRead=true; $('srcBox').innerHTML=srcButton(); calc(); }
+function resetAll(){ document.querySelectorAll('input[type=tel],input[type=text]').forEach(e=>e.value=''); document.querySelectorAll('.cnt select').forEach(e=>e.value='0'); $('sprCount').value='0'; sprRows(0); document.querySelectorAll('input[type=checkbox]').forEach(e=>e.checked=false); $('hasSpouse').value='no'; kyuyoAuto=true; fromNencho=false; certsRead=true; $('srcBox').innerHTML=srcButton(); calc(); }
 let certsRead=true;
 function srcButton(){ return `<div class="src">年末調整アプリで入力した内容を取り込めます。<br><button class="b2 small" style="margin-top:6px" onclick="loadNencho()">年末調整の入力を読み込む</button></div>`; }
 async function loadNencho(){
@@ -196,6 +204,7 @@ async function loadNencho(){
     setYen('lifeNew',x.life.new); setYen('lifeOld',x.life.old); setYen('lifeCare',x.life.care); setYen('lifePnew',x.life.pnew); setYen('lifePold',x.life.pold); setYen('jishin',x.jishin); setYen('oldLong',x.oldLong); setYen('loanBalance',x.loanBalance);
     $('hasSpouse').value=x.spouseIncome==null?'no':'yes'; setYen('spouseIncome',x.spouseIncome==null?'':x.spouseIncome); $('spouseOver70').checked=!!x.spouseOver70;
     for(const k of ['ippan','tokutei','rojin','doukyo']) $(k).value=Math.min(9,x.dependents[k]||0);
+    { const inc=(x.specialRelatives||[]).slice(0,3); $('sprCount').value=String(inc.length); sprRows(inc.length, inc.map(v=>v+650000)); if(inc.length) $('sprDetails').open=true; }
     for(const k of ['shogai','tokubetsu','doukyoTokubetsu']) $(k).value=Math.min(9,x.personal[k]||0);
     $('kafu').checked=!!x.personal.kafu; $('hitorioya').checked=!!x.personal.hitorioya; $('gakusei').checked=!!x.personal.gakusei;
     document.querySelectorAll('details').forEach(d=>{ if([...d.querySelectorAll('input,select')].some(e=>e.type==='checkbox'?e.checked:(num(e.id)>0))) d.open=true; });

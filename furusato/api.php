@@ -59,10 +59,12 @@ switch ($action) {
         $dep = ['ippan' => 0, 'tokutei' => 0, 'rojin' => 0, 'doukyo' => 0];
         $per = ['shogai' => 0, 'tokubetsu' => 0, 'doukyoTokubetsu' => 0, 'kafu' => 0, 'hitorioya' => 0, 'gakusei' => 0];
         $adjust = !empty($c['adjust']);
+        $spr = []; // 特定親族特別控除の対象者の所得
         foreach ($c['family'] ?? [] as $f) {
             $cls = $f['class'] ?? '';
+            if ($cls === '特定親族') $spr[] = (int)($f['income']['total_income'] ?? 0);
             if ($cls === '一般') $dep['ippan']++; elseif ($cls === '特定') $dep['tokutei']++; elseif ($cls === '老人') $dep['rojin']++; elseif ($cls === '同老') $dep['doukyo']++;
-            if (in_array($cls, ['一般', '特定', '老人', '同老', '年少'], true)) {
+            if (in_array($cls, ['一般', '特定', '老人', '同老', '年少', '特定親族'], true)) {
                 $d = $f['disability'] ?? 'none';
                 if ($d === 'general') $per['shogai']++; elseif ($d === 'special') $per['tokubetsu']++; elseif ($d === 'special_together') $per['doukyoTokubetsu']++;
             }
@@ -87,7 +89,7 @@ switch ($action) {
                 'life' => ['new' => $sum['life'] ?? 0, 'old' => $sum['life_old'] ?? 0, 'care' => $sum['kaigo'] ?? 0, 'pnew' => $sum['nenkin'] ?? 0, 'pold' => $sum['nenkin_old'] ?? 0],
                 'jishin' => $sum['jishin'] ?? 0, 'oldLong' => $sum['old_songai'] ?? 0,
                 'spouseIncome' => $spouseIncome, 'spouseOver70' => $spouseOver70,
-                'dependents' => $dep, 'personal' => $per,
+                'dependents' => $dep, 'specialRelatives' => $spr, 'personal' => $per,
                 'loanBalance' => $sum['jutaku'] ?? 0,
             ]]);
 

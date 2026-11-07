@@ -68,6 +68,13 @@
     const a = c.ippan || 0, t = c.tokutei || 0, r = c.rojin || 0, d = c.doukyo || 0;
     return { s: a * 380000 + t * 630000 + r * 480000 + d * 580000, j: a * 330000 + t * 450000 + r * 380000 + d * 450000, diff: a * 50000 + t * 180000 + r * 100000 + d * 130000 };
   }
+  // 特定親族特別控除（令和7年分〜）：19〜22歳で所得58万円超123万円以下の親族。incomes は各人の合計所得の配列
+  function specialRelativeDeduction(incomes) {
+    let s = 0, j = 0, diff = 0;
+    const tbl = [[850000, 630000, 450000], [900000, 610000, 450000], [950000, 510000, 450000], [1e6, 410000, 410000], [1.05e6, 310000, 310000], [1.1e6, 210000, 210000], [1.15e6, 110000, 110000], [1.2e6, 60000, 60000], [1.23e6, 30000, 30000]];
+    for (const inc of incomes || []) { if (inc <= 580000 || inc > 1.23e6) continue; for (const [u, a, b] of tbl) if (inc <= u) { s += a; j += b; diff += a - b; break; } }
+    return { s, j, diff };
+  }
   // 障害者・寡婦・ひとり親・勤労学生 {s, j, diff}。人数
   function personalDeduction(c) {
     const items = [['shogai', 270000, 260000], ['tokubetsu', 400000, 300000], ['doukyoTokubetsu', 750000, 530000], ['kafu', 270000, 260000], ['hitorioya', 350000, 300000], ['gakusei', 270000, 260000]];
@@ -98,13 +105,13 @@
     const sh = i.shaho || {}; const shaho = (sh.kyuyo || 0) + (sh.kokuho || 0) + (sh.nenkin || 0) + (sh.etc || 0);
     const life = lifeDeduction(i.life || {}), quake = quakeDeduction(i.jishin, i.oldLong);
     const sp = spouseDeduction(i.spouseIncome, gokei, !!i.spouseOver70);
-    const dep = dependentDeduction(i.dependents || {}), per = personalDeduction(i.personal || {});
+    const dep = dependentDeduction(i.dependents || {}), per = personalDeduction(i.personal || {}), spr = specialRelativeDeduction(i.specialRelatives || []);
     const k = kiso(gokei, year), kj = kisoJ(gokei);
     const common = shaho + (i.kyosai || 0) + (i.iryo || 0) + (i.zasson || 0);
-    const ded = common + life.s + quake.s + sp.s + dep.s + per.s + k;
-    const dedJ = common + life.j + quake.j + sp.j + dep.j + per.j + kj;
+    const ded = common + life.s + quake.s + sp.s + dep.s + spr.s + per.s + k;
+    const dedJ = common + life.j + quake.j + sp.j + dep.j + spr.j + per.j + kj;
     const kazei = Math.max(0, Math.floor((gokei - ded) / 1000) * 1000), kazeiJ = Math.max(0, Math.floor((gokei - dedJ) / 1000) * 1000);
-    const jinDiff = 50000 + sp.diff + dep.diff + per.diff; // 基礎控除差5万を含む
+    const jinDiff = 50000 + sp.diff + dep.diff + spr.diff + per.diff; // 基礎控除差5万を含む
     let chosei; if (kazeiJ <= 2e6) chosei = Math.min(jinDiff, kazeiJ) * 0.05; else chosei = Math.max(2500, (jinDiff - (kazeiJ - 2e6)) * 0.05);
     const it = incomeTax(kazei);
     const loanJ = i.loanJ != null ? i.loanJ : loanToResident(i.loanBalance || 0, it.tax, kazei);
@@ -120,13 +127,13 @@
     if (sp.kind === '対象外' && i.spouseIncome != null) warnings.push('配偶者の所得が133万円を超えるため、配偶者控除・配偶者特別控除は0円で計算しました。');
     return {
       limit, limitRaw, safe: r => Math.floor(limitRaw * r / 1000) * 1000,
-      salaryIncome: sal, pensionIncome: pen, gokei, shaho, life, quake, spouse: sp, dependents: dep, personal: per, kiso: k, kisoJ: kj,
+      salaryIncome: sal, pensionIncome: pen, gokei, shaho, life, quake, spouse: sp, dependents: dep, specialRelatives: spr, personal: per, kiso: k, kisoJ: kj,
       ded, dedJ, kazei, kazeiJ, jinDiff, chosei, loanJ, shotokuwari, rate, tokurei,
       incomeTaxAmount: Math.floor(it.tax * 1.021 / 100) * 100, residentTax: Math.floor(shotokuwari / 100) * 100 + 5000,
       warnings,
     };
   }
 
-  const api = { calcLimit, salaryDeduction, salaryIncome, pensionIncome, lifeDeduction, quakeDeduction, kiso, kisoJ, spouseDeduction, dependentDeduction, personalDeduction, incomeTax, loanToResident, adjustDeduction };
+  const api = { calcLimit, specialRelativeDeduction, salaryDeduction, salaryIncome, pensionIncome, lifeDeduction, quakeDeduction, kiso, kisoJ, spouseDeduction, dependentDeduction, personalDeduction, incomeTax, loanToResident, adjustDeduction };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FurusatoCalc = api;
 })(typeof window !== 'undefined' ? window : globalThis);
