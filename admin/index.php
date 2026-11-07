@@ -15,7 +15,12 @@ if (($_POST['act'] ?? '') === 'login') {
     $tk = 'admin:' . client_ip();
     if (!throttle_ok($tk, 5)) { audit('admin locked'); exit('<meta charset="UTF-8"><p style="font-family:sans-serif;padding:30px">試行回数が多すぎます。15分後にやり直してください。</p>'); }
     $pwOk = hash_equals((string)$cfg['admin_password'], (string)($_POST['pw'] ?? ''));
-    $otpOk = empty($cfg['admin_totp_secret']) || totp_verify((string)$cfg['admin_totp_secret'], (string)($_POST['otp'] ?? ''));
+    $otpIn = (string)($_POST['otp'] ?? '');
+    $otpOk = empty($cfg['admin_totp_secret']) || totp_verify((string)$cfg['admin_totp_secret'], $otpIn);
+    if (!$otpOk && $pwOk) { // バックアップコード（1回限り）
+        $bf = data_dir() . '/_backup_codes.json'; $codes = json_load($bf, []); $norm = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $otpIn));
+        foreach ($codes as $k => $hsh) if (strlen($norm) >= 8 && password_verify($norm, $hsh)) { unset($codes[$k]); json_save($bf, array_values($codes)); $otpOk = true; audit('admin login with backup code (' . count($codes) . ' left)'); break; }
+    }
     if ($pwOk && $otpOk) { $_SESSION['admin'] = true; session_regenerate_id(true); throttle_clear($tk); audit('admin login ok'); }
     else { throttle_fail($tk, 5); audit('admin login ng'); usleep(500000); }
     header('Location: ./'); exit;
@@ -149,6 +154,13 @@ if (($_POST['act'] ?? '') === 'seal') {
 }
 if (($_GET['act'] ?? '') === 'archive_dl') { $f = data_dir() . '/_archive/' . basename((string)$_GET['f']); if (file_exists($f)) { header('Content-Type: application/zip'); header('Content-Disposition: attachment; filename="' . basename($f) . '"'); readfile($f); } exit; }
 if (($_POST['act'] ?? '') === 'archive_rm') { $f = data_dir() . '/_archive/' . basename((string)$_POST['f']); if (file_exists($f)) { unlink($f); audit('archive removed ' . basename($f)); $msg = '封印ファイルをサーバーから消しました'; } }
+// バックアップコードの発行（8個。1回ずつ使える。表示は1度だけ）
+if (($_POST['act'] ?? '') === 'backup_codes') {
+    $plain = []; $hashes = []; $al = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    for ($i = 0; $i < 8; $i++) { $c = ''; for ($j = 0; $j < 10; $j++) $c .= $al[random_int(0, 31)]; $plain[] = substr($c, 0, 5) . '-' . substr($c, 5); $hashes[] = password_hash($c, PASSWORD_DEFAULT); }
+    json_save(data_dir() . '/_backup_codes.json', $hashes); audit('backup codes issued');
+    $msg = 'バックアップコードを発行しました（古いコードは無効）。この画面を閉じると二度と表示されません：' . implode('　', $plain);
+}
 // 5年を過ぎた年の削除
 if (($_POST['act'] ?? '') === 'purge') {
     $py = preg_replace('/\D/', '', (string)$_POST['purge_year']);
@@ -247,7 +259,11 @@ $years = array_values(array_unique(array_filter(array_map(fn($d) => basename($d)
 <?php $zd = json_load(data_dir() . '/_zip2city.json'); ?>
 <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="zipdict"><button class="g">日本郵便から辞書を取り込む（年1回）</button></form>　<small><?= $zd ? '取込済み：' . $h(date('Y-m-d', strtotime($zd['updated_at']))) . '（' . count($zd['map']) . '件）' : '未取込' ?></small>
 <h2 style="margin-top:14px">事務所画面の2段階認証</h2>
-<?php if (!empty($cfg['admin_totp_secret'])): ?><p><small>有効です（ログイン時に認証アプリの6桁が必要）。</small></p><?php else: ?>
+<?php if (!empty($cfg['admin_totp_secret'])): ?><p><small>有効です（ログイン時に認証アプリの6桁が必要）。</small></p>
+<p><small>スマホを失くしたときの備え：バックアップコード（1回ずつ使える10文字のコード8個）。認証アプリの6桁の代わりに入れます。残り <?= count(json_load(data_dir() . '/_backup_codes.json', [])) ?> 個。</small>
+<form method="post" style="display:inline" onsubmit="return confirm('新しいコードを8個発行し、古いコードは無効になります。印刷して金庫などに保管してください。')"><?= csrf_field() ?><input type="hidden" name="act" value="backup_codes"><button class="g" style="font-size:12px;padding:4px 8px">バックアップコードを発行</button></form></p>
+<p><small>もう1つの備え：同じ秘密の文字列を2台の認証アプリ（代表と職員のスマホ）に登録しておくと、どちらの6桁でも通ります。</small></p>
+<?php else: ?>
 <?php $sug = ''; $al = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; for ($i = 0; $i < 20; $i++) $sug .= $al[random_int(0, 31)]; ?>
 <p><small>未設定。有効にするには、config.php の <code>'admin_totp_secret' => ''</code> に次の文字列を入れ、スマホの認証アプリ（Google Authenticator など）で「手動で入力」→ この文字列を登録します。<br>秘密の文字列（この画面を開くたびに違うものが出ます。使うものを1つ控える）：<b><?= $sug ?></b><br>認証アプリ側の名前は「メーティス年調」、種類は「時間ベース」。</small></p><?php endif; ?>
 <h2 style="margin-top:14px">保管と削除</h2>
