@@ -3,6 +3,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/common.php';
 require_once __DIR__ . '/judge.php';
+require_once __DIR__ . '/zipcode.php';
 
 const ICS_COLS = 540;
 // 列番号（0始まり）
@@ -142,6 +143,12 @@ function ics_row_from_record(array $r): array {
     $zip = $a['zip'] ?? ($prev['zip'] ?? ''); $addr = $a['addr'] ?? ($prev['addr'] ?? '');
     $set(C['zip'], $zip);
     $set(C['addr1'], mb_substr($addr, 0, 20)); $set(C['addr2'], mb_substr($addr, 20, 20));
+    // 市区町村コード：住所が変わった（または空）なら郵便番号から引く
+    $prevZip = $prev['zip'] ?? '';
+    if ($zip !== '' && ($row[C['city_code']] === '' || preg_replace('/\D/', '', $zip) !== preg_replace('/\D/', '', $prevZip))) {
+        $cc = zip_to_city($zip);
+        if ($cc) $set(C['city_code'], $cc[0]);
+    }
     // 本人区分
     $flags = [];
     $sf = $a['self_flags'] ?? [];
@@ -279,8 +286,8 @@ function cert_key(string $cat, string $contract): ?string {
 }
 
 /** 顧問先の提出済み（または全員）をCSVにして返す（Shift-JIS, CRLF） */
-function ics_export(string $client, bool $onlySubmitted = true): string {
-    $cdir = data_dir() . "/$client/" . cfg()['year'];
+function ics_export(string $client, bool $onlySubmitted = true, ?int $year = null): string {
+    $cdir = data_dir() . "/$client/" . ($year ?? cfg()['year']);
     $meta = json_load("$cdir/_ics_meta.json");
     $lines = [];
     if ($meta) { $lines[] = $meta['meta'][0]; $lines[] = $meta['meta'][1]; $lines[] = $meta['header']; }
