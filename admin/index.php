@@ -121,6 +121,32 @@ if (($_GET['act'] ?? '') === 'photos_zip') {
     $za->close();
     header('Content-Type: application/zip'); header("Content-Disposition: attachment; filename=\"nencho_{$client}_{$y}_photos.zip\""); readfile($tmp); unlink($tmp); exit;
 }
+// 過年度の封印：パスワード付きZIP（AES-256）を作って、サーバーから消す
+if (($_POST['act'] ?? '') === 'seal') {
+    $sy = preg_replace('/\D/', '', (string)$_POST['seal_year']); $pw = (string)($_POST['seal_pw'] ?? '');
+    if ((int)$sy >= $year - 1) $msg = '今年と前年は封印できません（前年は引き継ぎに使います）';
+    elseif (strlen($pw) < 12) $msg = 'パスワードは12文字以上にしてください';
+    elseif (!defined('ZipArchive::EM_AES_256')) $msg = 'このサーバーは暗号化ZIPに対応していません';
+    else {
+        $adir = data_dir() . '/_archive'; if (!is_dir($adir)) mkdir($adir, 0700, true);
+        $zf = "$adir/nencho_{$sy}_" . date('Ymd') . '.zip'; $za = new ZipArchive(); $za->open($zf, ZipArchive::CREATE | ZipArchive::OVERWRITE); $za->setPassword($pw);
+        $n = 0;
+        foreach (glob(data_dir() . "/*/$sy", GLOB_ONLYDIR) ?: [] as $yd) {
+            $client = basename(dirname($yd));
+            $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($yd, FilesystemIterator::SKIP_DOTS));
+            foreach ($it as $f) { $rel = "$client/$sy/" . substr($f->getPathname(), strlen($yd) + 1); $za->addFile($f->getPathname(), $rel); $za->setEncryptionName($rel, ZipArchive::EM_AES_256); $n++; }
+        }
+        $za->close();
+        if ($n === 0) { @unlink($zf); $msg = "$sy 年のデータがありません"; }
+        else {
+            foreach (glob(data_dir() . "/*/$sy", GLOB_ONLYDIR) ?: [] as $yd) { $rit = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($yd, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST); foreach ($rit as $f) $f->isDir() ? rmdir($f->getPathname()) : unlink($f->getPathname()); rmdir($yd); }
+            audit("sealed year $sy ($n files)");
+            $msg = "$sy 年分を封印しました（$n ファイル）。下の「封印済み」からダウンロードして手元に保管し、サーバーからも消してください";
+        }
+    }
+}
+if (($_GET['act'] ?? '') === 'archive_dl') { $f = data_dir() . '/_archive/' . basename((string)$_GET['f']); if (file_exists($f)) { header('Content-Type: application/zip'); header('Content-Disposition: attachment; filename="' . basename($f) . '"'); readfile($f); } exit; }
+if (($_POST['act'] ?? '') === 'archive_rm') { $f = data_dir() . '/_archive/' . basename((string)$_POST['f']); if (file_exists($f)) { unlink($f); audit('archive removed ' . basename($f)); $msg = '封印ファイルをサーバーから消しました'; } }
 // 会社用ページの合言葉を発行
 if (($_POST['act'] ?? '') === 'company_key') {
     $client = preg_replace('/\D/', '', (string)$_POST['client']);
@@ -205,16 +231,32 @@ $years = array_values(array_unique(array_filter(array_map(fn($d) => basename($d)
 <textarea name="paste" rows="2" style="width:100%;margin-top:6px" placeholder="0302 津守産業株式会社"></textarea>
 <button style="margin-top:6px">一覧を読み込む</button>　<small>登録済み：<?= count($clientNames) ?> 件</small></form>
 <h2 style="margin-top:14px">2. 前年CSVの取り込み（複数ファイル可）</h2>
-<form method="post" enctype="multipart/form-data"><?= csrf_field() ?><input type="hidden" name="act" value="import">
-<input type="file" name="csv[]" accept=".csv,.CSV" multiple required>　<button>取り込む</button>　<small>顧問先コードはファイル名（KYCSV06 0101<u>0307</u>.CSV）から。違う場合だけ4桁：<input type="text" name="client" size="6"></small></form>
+<form method="post" enctype="multipart/form-data" id="impform"><?= csrf_field() ?><input type="hidden" name="act" value="import">
+<div id="drop" style="border:2px dashed #00A88E;border-radius:10px;padding:22px;text-align:center;background:#E3F4F0;color:#007A67;font-weight:700;cursor:pointer">ここに日本ICSのCSVをドラッグ＆ドロップ（複数可）<br><small style="font-weight:400">またはクリックして選ぶ。落とすと、すぐ取り込みが始まります</small></div>
+<input type="file" name="csv[]" accept=".csv,.CSV" multiple required style="display:none" id="csvin">　<button style="margin-top:6px">選んだファイルを取り込む</button>　<small>顧問先コードはファイル名（KYCSV06 0101<u>0307</u>.CSV）から。違う場合だけ4桁：<input type="text" name="client" size="6"></small></form>
 <small>日本ICS：業務選択 → 表形式 → 給与マスター表形式処理 → ファイル作成（タイプ6）</small>
 <h2 style="margin-top:14px">郵便番号 → 市区町村コード</h2>
 <?php $zd = json_load(data_dir() . '/_zip2city.json'); ?>
 <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="zipdict"><button class="g">日本郵便から辞書を取り込む（年1回）</button></form>　<small><?= $zd ? '取込済み：' . $h(date('Y-m-d', strtotime($zd['updated_at']))) . '（' . count($zd['map']) . '件）' : '未取込' ?></small>
+<h2 style="margin-top:14px">過年度の封印（今年と前年より古い年）</h2>
+<form method="post" onsubmit="return confirm('この年のデータをパスワード付きZIPにまとめ、サーバーの元データを消します。よろしいですか？')"><?= csrf_field() ?><input type="hidden" name="act" value="seal">
+年<select name="seal_year"><?php foreach ($years as $yy) if ((int)$yy < $year - 1) echo "<option>$yy</option>"; ?></select>　パスワード（12文字以上）<input type="text" name="seal_pw" size="24">　<button class="g" style="background:#C8372D">封印する</button>
+<br><small>暗号化ZIP（AES-256）にしてから元データを消します。パスワードは事務所で別に保管してください（忘れると開けません）。</small></form>
+<?php $arcs = glob(data_dir() . '/_archive/*.zip') ?: []; if ($arcs): ?><p><small>封印済み：</small><?php foreach ($arcs as $af): ?><br><a href="?act=archive_dl&f=<?= rawurlencode(basename($af)) ?>"><?= $h(basename($af)) ?></a>（<?= round(filesize($af) / 1048576, 1) ?> MB）<form method="post" style="display:inline" onsubmit="return confirm('ダウンロード済みですか？サーバーから消します')"><?= csrf_field() ?><input type="hidden" name="act" value="archive_rm"><input type="hidden" name="f" value="<?= $h(basename($af)) ?>"><button class="g" style="font-size:11px;padding:2px 6px">サーバーから消す</button></form><?php endforeach; ?></p><?php endif; ?>
 <h2 style="margin-top:14px">3. 前年データのない人を追加</h2>
 <form method="post"><?= csrf_field() ?><input type="hidden" name="act" value="add_emp">顧問先コード<input type="text" name="client" size="6">　個人コード（日本ICSと同じ）<input type="text" name="emp" size="10" placeholder="**000021">　<button>作る</button></form>
 </div></details>
 </div>
+<script>
+(function(){ const d=document.getElementById('drop'), inp=document.getElementById('csvin'), f=document.getElementById('impform'); if(!d) return;
+  d.onclick=()=>inp.click(); inp.onchange=()=>{ if(inp.files.length) f.submit(); };
+  ['dragenter','dragover'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault(); d.style.background='#c9ece4';}));
+  ['dragleave','drop'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault(); d.style.background='#E3F4F0';}));
+  d.addEventListener('drop',ev=>{ const files=[...ev.dataTransfer.files].filter(x=>/\.csv$/i.test(x.name)); if(!files.length){ alert('CSVファイルを落としてください'); return; } const dt=new DataTransfer(); files.forEach(x=>dt.items.add(x)); inp.files=dt.files; d.textContent=files.length+' 件を取り込んでいます…'; f.submit(); });
+  // ページ全体に落としても受ける
+  document.addEventListener('dragover',ev=>ev.preventDefault()); document.addEventListener('drop',ev=>{ if(ev.target.closest('#drop')) return; ev.preventDefault(); const files=[...ev.dataTransfer.files].filter(x=>/\.csv$/i.test(x.name)); if(files.length){ const dt=new DataTransfer(); files.forEach(x=>dt.items.add(x)); inp.files=dt.files; document.querySelector('details').open=true; f.submit(); } });
+})();
+</script>
 <div class="card"><h2>顧問先の一覧（<?= $viewYear ?>年分）</h2>
 <?php
 $clients = array_filter(glob(data_dir() . '/*', GLOB_ONLYDIR) ?: [], fn($d) => preg_match('/\/\d{4}$/', $d) && is_dir("$d/$viewYear"));
