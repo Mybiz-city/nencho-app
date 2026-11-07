@@ -96,7 +96,7 @@ function bizForecast(){ const b=S.biz; let base=0,cum=0,el=0,m={},annualSales=nu
   if(!out&&annualSales!=null){ out=annualSales*rate; estimated=true; }
   if(!inn&&annualExp!=null&&out){ inn=Math.max(0,annualExp)*0.7*rate; estimated=true; }
   else if(b.src==='photo'&&v.out&&!v.inn){ /* 仮払不明 */ }
-  if(b.src==='photo'&&v.out){ const f=(el&&cum)?base/cum:1; out=v.out*f; inn=v.inn*f; estimated=false; }
+  if(v.out){ let f=1; if(b.src==='photo') f=(el&&cum)?base/cum:(el?12/el:1); else if(b.mode==='ytd') f=el?12/el:1; out=v.out*f; inn=v.inn*f; estimated=false; }
   let pay=0; if(v.mode==='kani')pay=out*(1-v.minashi); else if(v.mode==='niwari')pay=out*0.2; else if(v.mode==='honsoku')pay=Math.max(0,out-inn);
   let diff; if(v.mode==='menzei')diff=v.acc==='nuki'?out-inn:0; else if(v.acc==='nuki')diff=(out-inn)-pay; else diff=v.paidBooked==='yes'?0:-pay;
   const pre=base+diff+(b.adj||0); const aoiro=Math.min(b.aoiro,Math.max(0,pre));
@@ -142,7 +142,7 @@ function buildSteps(){
       <div id="vatbox" style="display:${v.mode==='menzei'?'none':'block'}"><label>帳簿の付け方</label>${big('vatacc',[['komi','税込で付けている','売上・経費に消費税が含まれている'],['nuki','税抜で付けている','仮受・仮払消費税の科目がある']],v.acc)}
       <div id="paidbox" style="display:${v.acc==='komi'?'block':'none'}"><label>消費税の納付額は、経費（租税公課）に入れていますか</label>${big('paidBooked',[['no','入れていない（年に1回払うだけ）'],['yes','毎月入れている']],v.paidBooked)}</div>
       <div id="minashibox" style="display:${v.mode==='kani'?'block':'none'}"><label>みなし仕入率</label><select id="minashi">${[[0.9,'第1種 90%（卸売）'],[0.8,'第2種 80%（小売）'],[0.7,'第3種 70%（製造・建設）'],[0.6,'第4種 60%（飲食など）'],[0.5,'第5種 50%（サービス）'],[0.4,'第6種 40%（不動産）']].map(([k,l])=>`<option value="${k}" ${v.minashi===k?'selected':''}>${l}</option>`).join('')}</select></div>
-      <details ${v.out?'open':''}><summary>仮受・仮払消費税が分かる（消費税額試算表）</summary><label>仮受消費税（今年の累計）</label>${yenInput('vatout',v.out)}<label>仮払消費税（今年の累計）</label>${yenInput('vatin',v.inn)}<div class="note">無ければ売上・経費から概算します。</div></details></div>`; },
+      <details ${v.out?'open':''}><summary>仮受・仮払消費税が分かる（消費税額試算表）</summary>${(()=>{const u=(S.biz.src==='manual'&&S.biz.mode==='annual')?'年間の見込み':(S.biz.src==='photo'?`1〜${S.biz.elapsed||'?'}月の累計`:`1〜${S.biz.month}月の累計`);return `<label>仮受消費税（${u}）</label>${yenInput('vatout',v.out)}<label>仮払消費税（${u}）</label>${yenInput('vatin',v.inn)}`})()}<div class="note">累計は残りの月の分まで引き伸ばして計算します。無ければ売上・経費から概算します。</div></details></div>`; },
       mount:()=>{ document.querySelectorAll('[data-k=vatmode]').forEach(b=>b.addEventListener('click',()=>{$('#vatbox').style.display=b.dataset.v==='menzei'?'none':'block';$('#minashibox').style.display=b.dataset.v==='kani'?'block':'none';})); document.querySelectorAll('[data-k=vatacc]').forEach(b=>b.addEventListener('click',()=>{$('#paidbox').style.display=b.dataset.v==='komi'?'block':'none';})); },
       next:()=>{ const v=S.biz.vat; v.mode=pick('vatmode')||'kani'; v.acc=pick('vatacc')||'komi'; v.paidBooked=pick('paidBooked')||'no'; v.minashi=+$('#minashi').value; v.out=toNum($('#vatout').value); v.inn=toNum($('#vatin').value); }});
     s.push({id:'shinkoku', t:'前年の確定申告書', html:()=>`<p>前年の<b>確定申告書（第一表・第二表）</b>を撮ってください。所得控除をそのまま使います。</p>
