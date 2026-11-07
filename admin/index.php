@@ -175,56 +175,78 @@ small{color:#666}
 <header><b><?= $h($cfg['app_name']) ?>　事務所画面（<?= $year ?>年分）</b><span><small><?= file_exists(__DIR__ . '/../version.txt') ? '版: ' . $h(trim((string)file_get_contents(__DIR__ . '/../version.txt'))) : '' ?></small>　<a href="./">一覧</a>　<?php if (!empty($cfg['deploy_key']) && !empty($cfg['github_repo'])): ?><a href="../deploy.php?key=<?= rawurlencode($cfg['deploy_key']) ?>" target="_blank" onclick="return confirm('GitHubの最新版に更新します。よろしいですか？')">アプリを更新</a>　<?php endif; ?><a href="?act=logout">ログアウト</a></span></header>
 <div class="wrap">
 <?php if ($msg): ?><div class="msg"><?= $h($msg) ?></div><?php endif; ?>
-<?php if ($view === 'home'): ?>
-<div class="card"><h2>1. 顧問先一覧の取り込み（名前の表示に使う。一覧が変わったら同じExcelを上げ直す）</h2>
-<form method="post" enctype="multipart/form-data">
-<?= csrf_field() ?><input type="hidden" name="act" value="clients">
-顧問先一覧のExcel（0.顧問先.xlsx）かCSV<input type="file" name="list" accept=".xlsx,.csv,.CSV,.txt">　または貼り付け（1行に「コード4桁 名前」。Excelからコピーした列でも可）<br>
-<textarea name="paste" rows="3" style="width:100%;margin-top:6px" placeholder="0302 津守産業株式会社&#10;0307 ○○株式会社"></textarea>
-<button style="margin-top:6px">一覧を読み込む</button>　<small>登録済み：<?= count($clientNames) ?> 件</small>
-</form>
-</div>
-<div class="card"><h2>2. 前年CSVの取り込み（複数ファイルをまとめて選べる）</h2>
-<form method="post" enctype="multipart/form-data">
-<?= csrf_field() ?><input type="hidden" name="act" value="import">
-日本ICSの前年CSV<input type="file" name="csv[]" accept=".csv,.CSV" multiple required>　<button>取り込む</button><br>
-<small>顧問先コードはファイル名から自動で読みます（KYCSV06<b>0101</b><u>0307</u>.CSV → 0307）。ファイル名を変えている場合だけ、ここに4桁を入れる：<input type="text" name="client" size="6" placeholder="任意"></small>
-</form>
-<small>登録コードは「顧問先コード4桁＋個人コードの数字6桁」です（例：0307000001）。従業員にはこの10桁をLINEなどで送ります。<br>日本ICS：業務選択 → 表形式 → 給与マスター表形式処理 → ファイル作成（タイプ6）で出したファイルです。</small>
-</div>
-<div class="card"><h2>郵便番号 → 市区町村コード</h2>
-<?php $zd = json_load(data_dir() . '/_zip2city.json'); ?>
-<form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="zipdict"><button class="g">日本郵便から辞書を取り込む（年1回）</button></form>　<small><?= $zd ? '取込済み：' . $h(date('Y-m-d', strtotime($zd['updated_at']))) . '（' . count($zd['map']) . '件）' : '未取込。住所が変わった人の市区町村コードを自動で埋めるために必要です' ?></small>
-</div>
-<div class="card"><h2>3. 前年データのない人を追加</h2>
-<form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="add_emp">顧問先コード<input type="text" name="client" size="6">　個人コード（日本ICSと同じ）<input type="text" name="emp" size="10" placeholder="**000021">　<button>作る</button></form>
-</div>
-<div class="card"><h2>提出状況 <small>（<?= $viewYear ?>年分<?= $readonly ? '・閲覧のみ' : '' ?>）　年を切り替え：<?php foreach (array_unique(array_filter(array_map(fn($d) => basename($d), glob(data_dir() . '/*/*', GLOB_ONLYDIR) ?: []), fn($b) => preg_match('/^\d{4}$/', $b))) as $yy): ?><a href="?y=<?= $yy ?>"><?= $yy ?></a> <?php endforeach; ?></small></h2>
 <?php
-$clients = array_filter(glob(data_dir() . '/*', GLOB_ONLYDIR) ?: [], fn($d) => preg_match('/\/\d{4}$/', $d));
-if (!$clients) echo '<p>まだ顧問先がありません。上から前年CSVを取り込んでください。</p>';
-foreach ($clients as $cd):
-    $client = basename($cd); $cdir = "$cd/$viewYear"; if (!is_dir($cdir)) continue;
-    $emps = glob("$cdir/*", GLOB_ONLYDIR) ?: [];
-    $rows = []; $cnt = ['submitted' => 0, 'in_progress' => 0, 'new' => 0];
-    foreach ($emps as $ed) {
-        $emp = basename($ed); $r = json_load("$ed/answers.json"); $prev = json_load("$ed/prev.json");
+// 顧問先ごとの集計
+function client_rows(string $client, string $cdir): array {
+    $rows = []; $cnt = ['submitted' => 0, 'in_progress' => 0, 'new' => 0, 'retired' => 0];
+    foreach (glob("$cdir/*", GLOB_ONLYDIR) ?: [] as $ed) {
+        $emp = basename($ed); $r = json_load("$ed/answers.json"); $prev = json_load("$ed/prev.json"); $ro = json_load("$ed/roster.json", []);
         $code = $r['emp'] ?? ($prev['code'] ?? $emp);
-        $st = $r['status'] ?? 'new'; $cnt[$st] = ($cnt[$st] ?? 0) + 1;
-        $name = $r['answers']['name'] ?? ($prev ? $prev['sei'] . ' ' . $prev['mei'] : '');
-        $ro = json_load("$ed/roster.json", []);
-        $rows[] = [$code, $name, $st, $r['submitted_at'] ?? ($r['updated_at'] ?? ''), count(array_filter($r['certs'] ?? [], fn($c) => ($c['status'] ?? '') !== 'deleted')), !empty($r['office_checked_at']), $ro];
+        $st = $r['status'] ?? 'new';
+        if (($ro['status'] ?? 'active') === 'retired') $cnt['retired']++; else $cnt[$st] = ($cnt[$st] ?? 0) + 1;
+        $name = $r['answers']['name'] ?? ($prev ? $prev['sei'] . ' ' . $prev['mei'] : ($ro['name'] ?? ''));
+        $rows[] = [$code, $name, $st, $r['submitted_at'] ?? ($r['updated_at'] ?? ''), count(array_filter($r['certs'] ?? [], fn($c) => ($c['status'] ?? '') !== 'deleted')), !empty($r['office_checked_at']), $ro, !empty($r['answers']['has_other_income']) && $r['answers']['has_other_income'] === 'unknown', ($r['answers']['other_employer_decl'] ?? '') === 'other'];
     }
+    usort($rows, fn($a, $b) => strcmp($a[0], $b[0]));
+    return [$rows, $cnt];
+}
+$ckeys = json_load(data_dir() . '/_company_keys.json', []);
+$base = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . preg_replace('#/admin/.*$#', '', $_SERVER['REQUEST_URI']);
+$years = array_values(array_unique(array_filter(array_map(fn($d) => basename($d), glob(data_dir() . '/*/*', GLOB_ONLYDIR) ?: []), fn($b) => preg_match('/^\d{4}$/', $b)))); rsort($years);
 ?>
-<?php $ckeys = json_load(data_dir() . '/_company_keys.json', []); $base = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . preg_replace('#/admin/.*$#', '', $_SERVER['REQUEST_URI']); ?>
-<h3 style="margin:14px 0 6px"><?= $h($client) ?> <?= $h($clientNames[$client] ?? '') ?>　<small>提出 <?= $cnt['submitted'] ?> ／ 入力中 <?= $cnt['in_progress'] ?> ／ 未着手 <?= $cnt['new'] ?></small>
-　<?php if (!empty($ckeys[$client]['key'])): ?><small>会社用ページ（<?= $h(date('m/d', strtotime($ckeys[$client]['issued_at']) + 90 * 86400)) ?>まで）：<input type="text" readonly value="<?= $h("$base/company/?c=$client&k=" . $ckeys[$client]['key']) ?>" size="60" onclick="this.select()"></small> <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="company_key"><input type="hidden" name="client" value="<?= $client ?>"><button class="g" style="font-size:11px;padding:3px 6px" onclick="return confirm('URLを作り直します。古いURLは使えなくなります')">作り直す</button></form><?php else: ?><form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="company_key"><input type="hidden" name="client" value="<?= $client ?>"><button class="g" style="font-size:12px;padding:4px 8px">会社用ページのURLを作る</button></form><?php endif; ?>
-　<a class="btn" href="?act=export&client=<?= $client ?>&y=<?= $viewYear ?>">提出済みをCSVで出す</a> <a class="btn g" href="?act=export&client=<?= $client ?>&all=1&y=<?= $viewYear ?>">全員分を出す</a> <a class="btn g" href="?act=photos_zip&client=<?= $client ?>&y=<?= $viewYear ?>">写真をまとめて保存</a></h3>
-<table><tr><th>登録コード<br><small>（下はICSの個人コード）</small></th><th>氏名</th><th>在籍</th><th>状態</th><th>最終更新</th><th>写真</th><th>事務所確認</th><th></th></tr>
+<?php if ($view === 'home'): ?>
+<div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+<div><b>対象年：<?= $viewYear ?>年分</b><?= $readonly ? '　<span class="st">閲覧のみ</span>' : '' ?>　<small>切り替え：<?php foreach ($years as $yy): ?><a href="?y=<?= $yy ?>" style="<?= $yy == $viewYear ? 'font-weight:700' : '' ?>"><?= $yy ?></a> <?php endforeach; ?></small></div>
+<details><summary style="cursor:pointer;color:#007A67">設定・取り込み（顧問先一覧、前年CSV、郵便番号辞書、追加）</summary>
+<div style="margin-top:10px">
+<h2>1. 顧問先一覧の取り込み</h2>
+<form method="post" enctype="multipart/form-data"><?= csrf_field() ?><input type="hidden" name="act" value="clients">
+顧問先一覧のExcel（0.顧問先.xlsx）かCSV<input type="file" name="list" accept=".xlsx,.csv,.CSV,.txt">　または貼り付け<br>
+<textarea name="paste" rows="2" style="width:100%;margin-top:6px" placeholder="0302 津守産業株式会社"></textarea>
+<button style="margin-top:6px">一覧を読み込む</button>　<small>登録済み：<?= count($clientNames) ?> 件</small></form>
+<h2 style="margin-top:14px">2. 前年CSVの取り込み（複数ファイル可）</h2>
+<form method="post" enctype="multipart/form-data"><?= csrf_field() ?><input type="hidden" name="act" value="import">
+<input type="file" name="csv[]" accept=".csv,.CSV" multiple required>　<button>取り込む</button>　<small>顧問先コードはファイル名（KYCSV06 0101<u>0307</u>.CSV）から。違う場合だけ4桁：<input type="text" name="client" size="6"></small></form>
+<small>日本ICS：業務選択 → 表形式 → 給与マスター表形式処理 → ファイル作成（タイプ6）</small>
+<h2 style="margin-top:14px">郵便番号 → 市区町村コード</h2>
+<?php $zd = json_load(data_dir() . '/_zip2city.json'); ?>
+<form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="zipdict"><button class="g">日本郵便から辞書を取り込む（年1回）</button></form>　<small><?= $zd ? '取込済み：' . $h(date('Y-m-d', strtotime($zd['updated_at']))) . '（' . count($zd['map']) . '件）' : '未取込' ?></small>
+<h2 style="margin-top:14px">3. 前年データのない人を追加</h2>
+<form method="post"><?= csrf_field() ?><input type="hidden" name="act" value="add_emp">顧問先コード<input type="text" name="client" size="6">　個人コード（日本ICSと同じ）<input type="text" name="emp" size="10" placeholder="**000021">　<button>作る</button></form>
+</div></details>
+</div>
+<div class="card"><h2>顧問先の一覧（<?= $viewYear ?>年分）</h2>
+<?php
+$clients = array_filter(glob(data_dir() . '/*', GLOB_ONLYDIR) ?: [], fn($d) => preg_match('/\/\d{4}$/', $d) && is_dir("$d/$viewYear"));
+if (!$clients) echo '<p>この年のデータがありません。「設定・取り込み」から前年CSVを取り込んでください。</p>';
+else {
+    $tot = ['n' => 0, 'submitted' => 0, 'in_progress' => 0, 'new' => 0];
+    echo '<table><tr><th>コード</th><th>顧問先</th><th>人数</th><th>提出済み</th><th>入力中</th><th>未着手</th><th>退職</th><th>会社用ページ</th><th></th></tr>';
+    foreach ($clients as $cd) {
+        $client = basename($cd); [$rows, $cnt] = client_rows($client, "$cd/$viewYear"); $n = count($rows) - $cnt['retired'];
+        $tot['n'] += $n; foreach (['submitted', 'in_progress', 'new'] as $k) $tot[$k] += $cnt[$k];
+        $done = $n > 0 && $cnt['submitted'] === $n;
+        echo '<tr' . ($done ? ' style="background:#E3F4F0"' : '') . '><td>' . $h($client) . '</td><td><a href="?v=client&client=' . $client . '&y=' . $viewYear . '"><b>' . $h($clientNames[$client] ?? '（名前未登録）') . '</b></a></td><td>' . $n . '</td><td>' . ($cnt['submitted'] ?: '') . '</td><td>' . ($cnt['in_progress'] ?: '') . '</td><td>' . ($cnt['new'] ?: '') . '</td><td>' . ($cnt['retired'] ?: '') . '</td><td>' . (!empty($ckeys[$client]['key']) ? '発行済み' : '—') . '</td><td><a class="btn" style="font-size:12px;padding:4px 8px" href="?v=client&client=' . $client . '&y=' . $viewYear . '">開く</a></td></tr>';
+    }
+    echo '<tr style="font-weight:700"><td></td><td>合計</td><td>' . $tot['n'] . '</td><td>' . $tot['submitted'] . '</td><td>' . $tot['in_progress'] . '</td><td>' . $tot['new'] . '</td><td></td><td></td><td></td></tr></table>';
+    echo '<small>緑の行＝全員提出済み。顧問先名を押すと従業員の一覧に進みます。</small>';
+}
+?>
+</div>
+
+<?php elseif ($view === 'client'):
+    $client = preg_replace('/\D/', '', (string)$_GET['client']); $cdir = data_dir() . "/$client/$viewYear"; [$rows, $cnt] = client_rows($client, $cdir);
+?>
+<p><a href="?y=<?= $viewYear ?>">← 顧問先の一覧</a></p>
+<div class="card"><h2><?= $h($client) ?> <?= $h($clientNames[$client] ?? '') ?>　<small><?= $viewYear ?>年分　提出 <?= $cnt['submitted'] ?> ／ 入力中 <?= $cnt['in_progress'] ?> ／ 未着手 <?= $cnt['new'] ?> ／ 退職 <?= $cnt['retired'] ?></small></h2>
+<p><a class="btn" href="?act=export&client=<?= $client ?>&y=<?= $viewYear ?>">提出済みをCSVで出す</a> <a class="btn g" href="?act=export&client=<?= $client ?>&all=1&y=<?= $viewYear ?>">全員分を出す</a> <a class="btn g" href="?act=photos_zip&client=<?= $client ?>&y=<?= $viewYear ?>">写真をまとめて保存</a></p>
+<?php if (!$readonly): ?>
+<p><?php if (!empty($ckeys[$client]['key'])): ?><small>会社用ページ（<?= $h(date('m/d', strtotime($ckeys[$client]['issued_at']) + 90 * 86400)) ?>まで有効）：<input type="text" readonly value="<?= $h("$base/company/?c=$client&k=" . $ckeys[$client]['key']) ?>" size="70" onclick="this.select()"></small> <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="company_key"><input type="hidden" name="client" value="<?= $client ?>"><button class="g" style="font-size:11px;padding:3px 6px" onclick="return confirm('URLを作り直します。古いURLは使えなくなります')">作り直す</button></form><?php else: ?><form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="company_key"><input type="hidden" name="client" value="<?= $client ?>"><button class="g" style="font-size:12px;padding:4px 8px">会社用ページのURLを作る</button></form><?php endif; ?></p>
+<?php endif; ?>
+<table><tr><th>登録コード<br><small>（下はICSの個人コード）</small></th><th>氏名</th><th>在籍</th><th>状態</th><th>最終更新</th><th>写真</th><th>注意</th><th>事務所確認</th><th></th></tr>
 <?php foreach ($rows as $w): ?>
-<tr><td><?php if (str_starts_with($w[0], 'N')): ?><form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="assign_code"><input type="hidden" name="client" value="<?= $client ?>"><input type="hidden" name="old" value="<?= $h($w[0]) ?>"><small>会社が追加</small><br><input type="text" name="new" size="9" placeholder="**000021"><button style="font-size:12px;padding:3px 6px">割当</button></form><?php else: ?><b><?= $h($client . code_digits($w[0])) ?></b><br><small><?= $h($w[0]) ?></small><?php endif; ?></td><td><?= $h($w[1]) ?></td><td><?= ($w[6]['status'] ?? 'active') === 'retired' ? '<span class="st" style="background:#fdecea;color:#C8372D">退職 ' . $h($w[6]['retire'] ?? '') . '</span>' : '在籍' ?><?= !empty($w[6]['hire']) ? '<br><small>入社 ' . $h($w[6]['hire']) . '</small>' : '' ?></td><td><span class="st <?= $w[2] ?>"><?= ['submitted' => '提出済み', 'in_progress' => '入力中', 'new' => '未着手'][$w[2]] ?? $w[2] ?></span></td><td><?= $w[3] ? $h(date('m/d H:i', strtotime($w[3]))) : '' ?></td><td><?= $w[4] ?>枚</td><td><?= $w[5] ? '✓' : '' ?></td><td><a href="?v=emp&client=<?= $client ?>&emp=<?= rawurlencode($w[0]) ?>&y=<?= $viewYear ?>">開く</a></td></tr>
+<tr><td><?php if (str_starts_with($w[0], 'N')): ?><form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="assign_code"><input type="hidden" name="client" value="<?= $client ?>"><input type="hidden" name="old" value="<?= $h($w[0]) ?>"><small>会社が追加</small><br><input type="text" name="new" size="9" placeholder="**000021"><button style="font-size:12px;padding:3px 6px">割当</button></form><?php else: ?><b><?= $h($client . code_digits($w[0])) ?></b><br><small><?= $h($w[0]) ?></small><?php endif; ?></td><td><?= $h($w[1]) ?></td><td><?= ($w[6]['status'] ?? 'active') === 'retired' ? '<span class="st" style="background:#fdecea;color:#C8372D">退職 ' . $h($w[6]['retire'] ?? '') . '</span>' : '在籍' ?><?= !empty($w[6]['hire']) ? '<br><small>入社 ' . $h($w[6]['hire']) . '</small>' : '' ?></td><td><span class="st <?= $w[2] ?>"><?= ['submitted' => '提出済み', 'in_progress' => '入力中', 'new' => '未着手'][$w[2]] ?? $w[2] ?></span></td><td><?= $w[3] ? $h(date('m/d H:i', strtotime($w[3]))) : '' ?></td><td><?= $w[4] ?>枚</td><td><?= $w[7] ? '<small style="color:#C8372D">確定申告へ</small>' : '' ?><?= $w[8] ? '<small style="color:#C8372D">乙欄・年調しない</small>' : '' ?></td><td><?= $w[5] ? '✓' : '' ?></td><td><a href="?v=emp&client=<?= $client ?>&emp=<?= rawurlencode($w[0]) ?>&y=<?= $viewYear ?>">開く</a></td></tr>
 <?php endforeach; ?></table>
-<?php endforeach; ?>
 </div>
 
 <?php elseif ($view === 'emp'):
@@ -260,6 +282,6 @@ foreach ($clients as $cd):
 <table><tr><th>列</th><th>項目</th><th>前年</th><th>今年</th></tr>
 <?php foreach ($row as $i => $v) { $pv = $p['raw'][$i] ?? ''; if ($v === '' && $pv === '') continue; if ($i >= 24 && $i <= 125) continue; $chg = (string)$v !== (string)$pv; echo '<tr class="' . ($chg ? 'chg' : '') . '"><td>' . ($i + 1) . '</td><td>' . $h($hdr[$i] ?? '') . '</td><td>' . $h($pv) . '</td><td>' . $h($v) . '</td></tr>'; } ?>
 </table></div>
-<p><a class="btn g" href="./">一覧に戻る</a></p>
+<p><a class="btn g" href="?v=client&client=<?= $client ?>&y=<?= $viewYear ?>">この顧問先の一覧に戻る</a></p>
 <?php endif; ?>
 </div></body></html>
