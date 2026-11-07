@@ -25,7 +25,7 @@ input:focus,select:focus{outline:none;border-color:var(--c)}
 .row{display:flex;gap:8px}.row>*{flex:1;min-width:0}
 .cnt{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .cnt label{margin:4px 0 2px}
-.cnt input{text-align:center}
+.cnt select{text-align:center}
 .chk{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:15px}.chk input{width:22px;height:22px;margin:0}
 button,a.btn{font-size:15px;padding:10px 12px;border:none;border-radius:10px;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-block;text-align:center}
 .b1{background:var(--c);color:#fff;font-weight:700}
@@ -98,17 +98,17 @@ details summary{cursor:pointer;color:var(--cd);font-weight:700;font-size:14px;ma
   </div>
   <h3>扶養する家族の人数（16歳以上）</h3>
   <div class="cnt">
-    <div><label>一般 <small>16〜18歳・23〜69歳</small></label><input type="number" id="ippan" min="0" value="0"></div>
-    <div><label>特定 <small>19〜22歳</small></label><input type="number" id="tokutei" min="0" value="0"></div>
-    <div><label>老人 <small>70歳以上・別居</small></label><input type="number" id="rojin" min="0" value="0"></div>
-    <div><label>同居老親 <small>70歳以上の親と同居</small></label><input type="number" id="doukyo" min="0" value="0"></div>
+    <div><label>一般</label><div class="note" style="margin:-2px 0 4px;min-height:1.6em">16〜18歳・23〜69歳</div><select id="ippan"><option value="0">0人</option><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option><option value="9">9人</option></select></div>
+    <div><label>特定</label><div class="note" style="margin:-2px 0 4px;min-height:1.6em">19〜22歳</div><select id="tokutei"><option value="0">0人</option><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option><option value="9">9人</option></select></div>
+    <div><label>老人</label><div class="note" style="margin:-2px 0 4px;min-height:1.6em">70歳以上・別居</div><select id="rojin"><option value="0">0人</option><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option><option value="9">9人</option></select></div>
+    <div><label>同居老親</label><div class="note" style="margin:-2px 0 4px;min-height:1.6em">70歳以上の親と同居</div><select id="doukyo"><option value="0">0人</option><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option><option value="9">9人</option></select></div>
   </div>
   <p class="note">16歳未満の子は人数に入れません。年収123万円（所得58万円）を超える家族も入れません。</p>
   <details><summary>障害者・寡婦・ひとり親・勤労学生に当てはまる人がいる</summary>
     <div class="cnt">
-      <div><label>障害者（人数）</label><input type="number" id="shogai" min="0" value="0"></div>
-      <div><label>特別障害者・別居（人数）</label><input type="number" id="tokubetsu" min="0" value="0"></div>
-      <div><label>特別障害者・同居（人数）</label><input type="number" id="doukyoTokubetsu" min="0" value="0"></div>
+      <div><label>障害者</label><div class="note" style="margin:-2px 0 4px;min-height:1.6em"></div><select id="shogai"><option value="0">0人</option><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option><option value="9">9人</option></select></div>
+      <div><label>特別障害者</label><div class="note" style="margin:-2px 0 4px;min-height:1.6em">別居</div><select id="tokubetsu"><option value="0">0人</option><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option><option value="9">9人</option></select></div>
+      <div><label>特別障害者</label><div class="note" style="margin:-2px 0 4px;min-height:1.6em">同居</div><select id="doukyoTokubetsu"><option value="0">0人</option><option value="1">1人</option><option value="2">2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8">8人</option><option value="9">9人</option></select></div>
     </div>
     <div class="chk"><input type="checkbox" id="kafu"><span>寡婦</span></div>
     <div class="chk"><input type="checkbox" id="hitorioya"><span>ひとり親</span></div>
@@ -118,7 +118,7 @@ details summary{cursor:pointer;color:var(--cd);font-weight:700;font-size:14px;ma
 
 <div class="card">
   <h2>4. 保険料・掛金など</h2>
-  <p class="note">控除証明書の「申告額」を入れます。まだ届いていなければ、去年と同じくらいの額で構いません。</p>
+  <div class="hint" style="margin-top:0"><b>入れるのは「支払った保険料」です。</b>控除額（4万円・12万円など）ではありません。控除額はこの画面が計算します。控除証明書の「申告額（12月末までの払込見込額）」を入れてください。まだ届いていなければ、去年と同じくらいの額で構いません。</div>
   <h3>生命保険料（支払額）</h3>
   <div class="row"><div><label>一般（新）</label><div class="yen"><input type="tel" id="lifeNew"></div></div><div><label>一般（旧）</label><div class="yen"><input type="tel" id="lifeOld"></div></div></div>
   <div class="row"><div><label>介護医療</label><div class="yen"><input type="tel" id="lifeCare"></div></div><div><label>個人年金（新）</label><div class="yen"><input type="tel" id="lifePnew"></div></div></div>
@@ -182,7 +182,7 @@ function calc(){
   if(fromNencho&&!certsRead) w.push('保険料の証明書はまだ読み取られていません。去年と同じくらいの額を「4. 保険料・掛金」に入れると近づきます。');
   $('warnBox').innerHTML=w.map(s=>`<div class="warn" style="text-align:left">${s}</div>`).join('');
 }
-function resetAll(){ document.querySelectorAll('input[type=tel],input[type=text]').forEach(e=>e.value=''); document.querySelectorAll('input[type=number]').forEach(e=>e.value='0'); document.querySelectorAll('input[type=checkbox]').forEach(e=>e.checked=false); $('hasSpouse').value='no'; kyuyoAuto=true; fromNencho=false; certsRead=true; $('srcBox').innerHTML=srcButton(); calc(); }
+function resetAll(){ document.querySelectorAll('input[type=tel],input[type=text]').forEach(e=>e.value=''); document.querySelectorAll('.cnt select').forEach(e=>e.value='0'); document.querySelectorAll('input[type=checkbox]').forEach(e=>e.checked=false); $('hasSpouse').value='no'; kyuyoAuto=true; fromNencho=false; certsRead=true; $('srcBox').innerHTML=srcButton(); calc(); }
 let certsRead=true;
 function srcButton(){ return `<div class="src">年末調整アプリで入力した内容を取り込めます。<br><button class="b2 small" style="margin-top:6px" onclick="loadNencho()">年末調整の入力を読み込む</button></div>`; }
 async function loadNencho(){
@@ -195,10 +195,10 @@ async function loadNencho(){
     setYen('kokuho',x.shaho.kokuho); setYen('nenkin',x.shaho.nenkin); setYen('shEtc',x.shaho.etc); setYen('kyosai',x.kyosai);
     setYen('lifeNew',x.life.new); setYen('lifeOld',x.life.old); setYen('lifeCare',x.life.care); setYen('lifePnew',x.life.pnew); setYen('lifePold',x.life.pold); setYen('jishin',x.jishin); setYen('oldLong',x.oldLong); setYen('loanBalance',x.loanBalance);
     $('hasSpouse').value=x.spouseIncome==null?'no':'yes'; setYen('spouseIncome',x.spouseIncome==null?'':x.spouseIncome); $('spouseOver70').checked=!!x.spouseOver70;
-    for(const k of ['ippan','tokutei','rojin','doukyo']) $(k).value=x.dependents[k]||0;
-    for(const k of ['shogai','tokubetsu','doukyoTokubetsu']) $(k).value=x.personal[k]||0;
+    for(const k of ['ippan','tokutei','rojin','doukyo']) $(k).value=Math.min(9,x.dependents[k]||0);
+    for(const k of ['shogai','tokubetsu','doukyoTokubetsu']) $(k).value=Math.min(9,x.personal[k]||0);
     $('kafu').checked=!!x.personal.kafu; $('hitorioya').checked=!!x.personal.hitorioya; $('gakusei').checked=!!x.personal.gakusei;
-    document.querySelectorAll('details').forEach(d=>{ if([...d.querySelectorAll('input')].some(e=>e.type==='checkbox'?e.checked:(num(e.id)>0))) d.open=true; });
+    document.querySelectorAll('details').forEach(d=>{ if([...d.querySelectorAll('input,select')].some(e=>e.type==='checkbox'?e.checked:(num(e.id)>0))) d.open=true; });
     $('srcBox').innerHTML=`<div class="src">年末調整アプリの入力（${j.name||''} さん）を取り込みました。数字は直せます。</div>`;
     $('backLink').style.display='block';
     calc();
