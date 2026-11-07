@@ -7,7 +7,7 @@ require_once __DIR__ . '/lib/ics.php';
 require_once __DIR__ . '/lib/claude.php';
 require_once __DIR__ . '/lib/drive.php';
 
-session_start();
+secure_session('nencho_emp', 28800);
 $action = $_GET['a'] ?? '';
 $in = json_decode((string)file_get_contents('php://input'), true) ?: [];
 
@@ -42,9 +42,11 @@ switch ($action) {
     case 'login':
         $p = parse_code((string)($in['code'] ?? ''));
         if (!$p) fail('登録コードは数字で入れてください（例：0302000001）');
-        if (!is_dir(data_dir() . '/' . $p['client'])) fail('この登録コードの会社は、まだ登録されていません。事務所にご確認ください');
+        $tk = 'login:' . client_ip(); $tk2 = 'code:' . $p['client'] . $p['num'];
+        if (!throttle_ok($tk, 10) || !throttle_ok($tk2, 5)) { audit("login locked $tk2"); fail('試行回数が多すぎます。15分ほど待ってからやり直してください'); }
+        if (!is_dir(data_dir() . '/' . $p['client'])) { throttle_fail($tk, 10); fail('この登録コードの会社は、まだ登録されていません。事務所にご確認ください'); }
         $emp = resolve_emp($p['client'], $p['num']);
-        if (!$emp) fail('この登録コードは見つかりません。数字をもう一度ご確認ください');
+        if (!$emp) { throttle_fail($tk, 10); throttle_fail($tk2, 5); fail('この登録コードは見つかりません。数字をもう一度ご確認ください'); }
         $r0 = load_record($p['client'], $emp);
         $ro = json_load(emp_dir($p['client'], $emp, false) . '/roster.json', []);
         if (($ro['status'] ?? 'active') === 'retired') fail('退職された方は、この会社の年末調整の対象外です。源泉徴収票をもとにご自身で確定申告をしてください');
@@ -52,8 +54,10 @@ switch ($action) {
         if ($knownBirth) {
             $b = (string)($in['birth'] ?? '');
             if ($b === '') json_out(['ok' => true, 'need_birth' => true]);
-            if ($b !== $knownBirth) { usleep(500000); fail('生年月日が登録と一致しません'); }
+            if ($b !== $knownBirth) { throttle_fail($tk, 10); throttle_fail($tk2, 5); audit("birth mismatch $tk2"); usleep(500000); fail('生年月日が登録と一致しません'); }
         }
+        throttle_clear($tk2); audit("login ok {$p['client']}-$emp");
+        session_regenerate_id(true);
         $_SESSION['client'] = $p['client']; $_SESSION['emp'] = $emp;
         $r = $r0;
         $uid = trim((string)($in['line_user_id'] ?? ''));

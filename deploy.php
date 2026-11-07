@@ -7,7 +7,9 @@ require_once __DIR__ . '/lib/common.php';
 header('Content-Type: text/plain; charset=UTF-8');
 $c = cfg();
 $key = (string)($_GET['key'] ?? '');
-if (empty($c['deploy_key']) || !hash_equals((string)$c['deploy_key'], $key)) { http_response_code(403); exit("NG: key が違います\n"); }
+if (!throttle_ok('deploy:' . client_ip(), 5)) { http_response_code(429); exit("NG: 試行回数が多すぎます\n"); }
+if (empty($c['deploy_key']) || !hash_equals((string)$c['deploy_key'], $key)) { throttle_fail('deploy:' . client_ip(), 5); audit('deploy denied'); http_response_code(403); exit("NG: key が違います\n"); }
+audit('deploy run');
 if (empty($c['github_repo'])) exit("NG: config.php の github_repo が空です\n");
 if (!class_exists('ZipArchive')) exit("NG: zip拡張がありません\n");
 

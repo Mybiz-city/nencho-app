@@ -6,21 +6,25 @@ require_once __DIR__ . '/../lib/judge.php';
 require_once __DIR__ . '/../lib/ics.php';
 require_once __DIR__ . '/../lib/xlsx.php';
 require_once __DIR__ . '/../lib/zipcode.php';
-session_start();
+secure_session('nencho_adm', 7200);
 $cfg = cfg();
 $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
 
 // ログイン
 if (($_POST['act'] ?? '') === 'login') {
-    if (hash_equals((string)$cfg['admin_password'], (string)($_POST['pw'] ?? ''))) $_SESSION['admin'] = true;
+    $tk = 'admin:' . client_ip();
+    if (!throttle_ok($tk, 5)) { audit('admin locked'); exit('<meta charset="UTF-8"><p style="font-family:sans-serif;padding:30px">試行回数が多すぎます。15分後にやり直してください。</p>'); }
+    if (hash_equals((string)$cfg['admin_password'], (string)($_POST['pw'] ?? ''))) { $_SESSION['admin'] = true; session_regenerate_id(true); throttle_clear($tk); audit('admin login ok'); }
+    else { throttle_fail($tk, 5); audit('admin login ng'); usleep(500000); }
     header('Location: ./'); exit;
 }
 if (($_GET['act'] ?? '') === 'logout') { unset($_SESSION['admin']); header('Location: ./'); exit; }
 if (empty($_SESSION['admin'])) {
-    echo '<!DOCTYPE html><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex"><title>事務所ログイン</title><body style="font-family:sans-serif;max-width:360px;margin:60px auto;padding:0 16px"><h2>事務所画面</h2><form method="post"><input type="hidden" name="act" value="login"><input type="password" name="pw" placeholder="パスワード" style="width:100%;font-size:18px;padding:10px"><button style="width:100%;font-size:18px;padding:10px;margin-top:10px;background:#00A88E;color:#fff;border:0;border-radius:8px">ログイン</button></form>';
+    echo '<!DOCTYPE html><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex"><title>事務所ログイン</title><body style="font-family:sans-serif;max-width:360px;margin:60px auto;padding:0 16px"><h2>事務所画面</h2><form method="post"><input type="hidden" name="act" value="login">' . csrf_field() . '<input type="password" name="pw" placeholder="パスワード" style="width:100%;font-size:18px;padding:10px"><button style="width:100%;font-size:18px;padding:10px;margin-top:10px;background:#00A88E;color:#fff;border:0;border-radius:8px">ログイン</button></form>';
     exit;
 }
 
+csrf_check();
 $year = $cfg['year'];
 $viewYear = preg_match('/^\d{4}$/', (string)($_GET['y'] ?? '')) ? (int)$_GET['y'] : $year;
 $readonly = $viewYear !== $year;
@@ -121,7 +125,7 @@ if (($_GET['act'] ?? '') === 'photos_zip') {
 if (($_POST['act'] ?? '') === 'company_key') {
     $client = preg_replace('/\D/', '', (string)$_POST['client']);
     $keys = json_load(data_dir() . '/_company_keys.json', []);
-    if (strlen($client) === 4) { $keys[$client] = $keys[$client] ?? bin2hex(random_bytes(12)); json_save(data_dir() . '/_company_keys.json', $keys); $msg = "会社用ページのURLを用意しました（$client）"; }
+    if (strlen($client) === 4) { $keys[$client] = ['key' => bin2hex(random_bytes(16)), 'issued_at' => date('c')]; json_save(data_dir() . '/_company_keys.json', $keys); audit("company key issued $client"); $msg = "会社用ページのURLを用意しました（$client）。有効期限は90日です"; }
 }
 // 会社が追加した人（Nコード）に日本ICSの個人コードを割り当てる
 if (($_POST['act'] ?? '') === 'assign_code') {
@@ -174,7 +178,7 @@ small{color:#666}
 <?php if ($view === 'home'): ?>
 <div class="card"><h2>1. 顧問先一覧の取り込み（名前の表示に使う。一覧が変わったら同じExcelを上げ直す）</h2>
 <form method="post" enctype="multipart/form-data">
-<input type="hidden" name="act" value="clients">
+<?= csrf_field() ?><input type="hidden" name="act" value="clients">
 顧問先一覧のExcel（0.顧問先.xlsx）かCSV<input type="file" name="list" accept=".xlsx,.csv,.CSV,.txt">　または貼り付け（1行に「コード4桁 名前」。Excelからコピーした列でも可）<br>
 <textarea name="paste" rows="3" style="width:100%;margin-top:6px" placeholder="0302 津守産業株式会社&#10;0307 ○○株式会社"></textarea>
 <button style="margin-top:6px">一覧を読み込む</button>　<small>登録済み：<?= count($clientNames) ?> 件</small>
@@ -182,7 +186,7 @@ small{color:#666}
 </div>
 <div class="card"><h2>2. 前年CSVの取り込み（複数ファイルをまとめて選べる）</h2>
 <form method="post" enctype="multipart/form-data">
-<input type="hidden" name="act" value="import">
+<?= csrf_field() ?><input type="hidden" name="act" value="import">
 日本ICSの前年CSV<input type="file" name="csv[]" accept=".csv,.CSV" multiple required>　<button>取り込む</button><br>
 <small>顧問先コードはファイル名から自動で読みます（KYCSV06<b>0101</b><u>0307</u>.CSV → 0307）。ファイル名を変えている場合だけ、ここに4桁を入れる：<input type="text" name="client" size="6" placeholder="任意"></small>
 </form>
@@ -190,10 +194,10 @@ small{color:#666}
 </div>
 <div class="card"><h2>郵便番号 → 市区町村コード</h2>
 <?php $zd = json_load(data_dir() . '/_zip2city.json'); ?>
-<form method="post" style="display:inline"><input type="hidden" name="act" value="zipdict"><button class="g">日本郵便から辞書を取り込む（年1回）</button></form>　<small><?= $zd ? '取込済み：' . $h(date('Y-m-d', strtotime($zd['updated_at']))) . '（' . count($zd['map']) . '件）' : '未取込。住所が変わった人の市区町村コードを自動で埋めるために必要です' ?></small>
+<form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="zipdict"><button class="g">日本郵便から辞書を取り込む（年1回）</button></form>　<small><?= $zd ? '取込済み：' . $h(date('Y-m-d', strtotime($zd['updated_at']))) . '（' . count($zd['map']) . '件）' : '未取込。住所が変わった人の市区町村コードを自動で埋めるために必要です' ?></small>
 </div>
 <div class="card"><h2>3. 前年データのない人を追加</h2>
-<form method="post" style="display:inline"><input type="hidden" name="act" value="add_emp">顧問先コード<input type="text" name="client" size="6">　個人コード（日本ICSと同じ）<input type="text" name="emp" size="10" placeholder="**000021">　<button>作る</button></form>
+<form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="add_emp">顧問先コード<input type="text" name="client" size="6">　個人コード（日本ICSと同じ）<input type="text" name="emp" size="10" placeholder="**000021">　<button>作る</button></form>
 </div>
 <div class="card"><h2>提出状況 <small>（<?= $viewYear ?>年分<?= $readonly ? '・閲覧のみ' : '' ?>）　年を切り替え：<?php foreach (array_unique(array_filter(array_map(fn($d) => basename($d), glob(data_dir() . '/*/*', GLOB_ONLYDIR) ?: []), fn($b) => preg_match('/^\d{4}$/', $b))) as $yy): ?><a href="?y=<?= $yy ?>"><?= $yy ?></a> <?php endforeach; ?></small></h2>
 <?php
@@ -214,11 +218,11 @@ foreach ($clients as $cd):
 ?>
 <?php $ckeys = json_load(data_dir() . '/_company_keys.json', []); $base = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . preg_replace('#/admin/.*$#', '', $_SERVER['REQUEST_URI']); ?>
 <h3 style="margin:14px 0 6px"><?= $h($client) ?> <?= $h($clientNames[$client] ?? '') ?>　<small>提出 <?= $cnt['submitted'] ?> ／ 入力中 <?= $cnt['in_progress'] ?> ／ 未着手 <?= $cnt['new'] ?></small>
-　<?php if (!empty($ckeys[$client])): ?><small>会社用ページ：<input type="text" readonly value="<?= $h("$base/company/?c=$client&k=" . $ckeys[$client]) ?>" size="60" onclick="this.select()"></small><?php else: ?><form method="post" style="display:inline"><input type="hidden" name="act" value="company_key"><input type="hidden" name="client" value="<?= $client ?>"><button class="g" style="font-size:12px;padding:4px 8px">会社用ページのURLを作る</button></form><?php endif; ?>
+　<?php if (!empty($ckeys[$client]['key'])): ?><small>会社用ページ（<?= $h(date('m/d', strtotime($ckeys[$client]['issued_at']) + 90 * 86400)) ?>まで）：<input type="text" readonly value="<?= $h("$base/company/?c=$client&k=" . $ckeys[$client]['key']) ?>" size="60" onclick="this.select()"></small> <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="company_key"><input type="hidden" name="client" value="<?= $client ?>"><button class="g" style="font-size:11px;padding:3px 6px" onclick="return confirm('URLを作り直します。古いURLは使えなくなります')">作り直す</button></form><?php else: ?><form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="company_key"><input type="hidden" name="client" value="<?= $client ?>"><button class="g" style="font-size:12px;padding:4px 8px">会社用ページのURLを作る</button></form><?php endif; ?>
 　<a class="btn" href="?act=export&client=<?= $client ?>&y=<?= $viewYear ?>">提出済みをCSVで出す</a> <a class="btn g" href="?act=export&client=<?= $client ?>&all=1&y=<?= $viewYear ?>">全員分を出す</a> <a class="btn g" href="?act=photos_zip&client=<?= $client ?>&y=<?= $viewYear ?>">写真をまとめて保存</a></h3>
 <table><tr><th>登録コード<br><small>（下はICSの個人コード）</small></th><th>氏名</th><th>在籍</th><th>状態</th><th>最終更新</th><th>写真</th><th>事務所確認</th><th></th></tr>
 <?php foreach ($rows as $w): ?>
-<tr><td><?php if (str_starts_with($w[0], 'N')): ?><form method="post" style="display:inline"><input type="hidden" name="act" value="assign_code"><input type="hidden" name="client" value="<?= $client ?>"><input type="hidden" name="old" value="<?= $h($w[0]) ?>"><small>会社が追加</small><br><input type="text" name="new" size="9" placeholder="**000021"><button style="font-size:12px;padding:3px 6px">割当</button></form><?php else: ?><b><?= $h($client . code_digits($w[0])) ?></b><br><small><?= $h($w[0]) ?></small><?php endif; ?></td><td><?= $h($w[1]) ?></td><td><?= ($w[6]['status'] ?? 'active') === 'retired' ? '<span class="st" style="background:#fdecea;color:#C8372D">退職 ' . $h($w[6]['retire'] ?? '') . '</span>' : '在籍' ?><?= !empty($w[6]['hire']) ? '<br><small>入社 ' . $h($w[6]['hire']) . '</small>' : '' ?></td><td><span class="st <?= $w[2] ?>"><?= ['submitted' => '提出済み', 'in_progress' => '入力中', 'new' => '未着手'][$w[2]] ?? $w[2] ?></span></td><td><?= $w[3] ? $h(date('m/d H:i', strtotime($w[3]))) : '' ?></td><td><?= $w[4] ?>枚</td><td><?= $w[5] ? '✓' : '' ?></td><td><a href="?v=emp&client=<?= $client ?>&emp=<?= rawurlencode($w[0]) ?>&y=<?= $viewYear ?>">開く</a></td></tr>
+<tr><td><?php if (str_starts_with($w[0], 'N')): ?><form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="assign_code"><input type="hidden" name="client" value="<?= $client ?>"><input type="hidden" name="old" value="<?= $h($w[0]) ?>"><small>会社が追加</small><br><input type="text" name="new" size="9" placeholder="**000021"><button style="font-size:12px;padding:3px 6px">割当</button></form><?php else: ?><b><?= $h($client . code_digits($w[0])) ?></b><br><small><?= $h($w[0]) ?></small><?php endif; ?></td><td><?= $h($w[1]) ?></td><td><?= ($w[6]['status'] ?? 'active') === 'retired' ? '<span class="st" style="background:#fdecea;color:#C8372D">退職 ' . $h($w[6]['retire'] ?? '') . '</span>' : '在籍' ?><?= !empty($w[6]['hire']) ? '<br><small>入社 ' . $h($w[6]['hire']) . '</small>' : '' ?></td><td><span class="st <?= $w[2] ?>"><?= ['submitted' => '提出済み', 'in_progress' => '入力中', 'new' => '未着手'][$w[2]] ?? $w[2] ?></span></td><td><?= $w[3] ? $h(date('m/d H:i', strtotime($w[3]))) : '' ?></td><td><?= $w[4] ?>枚</td><td><?= $w[5] ? '✓' : '' ?></td><td><a href="?v=emp&client=<?= $client ?>&emp=<?= rawurlencode($w[0]) ?>&y=<?= $viewYear ?>">開く</a></td></tr>
 <?php endforeach; ?></table>
 <?php endforeach; ?>
 </div>
@@ -230,9 +234,9 @@ foreach ($clients as $cd):
 ?>
 <div class="card"><h2><?= $h("$client-$emp") ?>　<?= $h($a['name'] ?? (($p['sei'] ?? '') . ' ' . ($p['mei'] ?? ''))) ?>　<span class="st <?= $r['status'] ?>"><?= $r['status'] ?></span></h2>
 <p><small>同意 <?= $h($r['consent_at'] ?? '—') ?>　提出 <?= $h($r['submitted_at'] ?? '—') ?>　LINE連携 <?= $r['line_user_id'] ? 'あり' : 'なし' ?></small></p>
-<form method="post"><input type="hidden" name="act" value="note"><input type="hidden" name="client" value="<?= $client ?>"><input type="hidden" name="emp" value="<?= $h($emp) ?>">
+<form method="post"><?= csrf_field() ?><input type="hidden" name="act" value="note"><input type="hidden" name="client" value="<?= $client ?>"><input type="hidden" name="emp" value="<?= $h($emp) ?>">
 <label><input type="checkbox" name="checked" <?= !empty($r['office_checked_at']) ? 'checked' : '' ?>> 事務所で確認した</label>　<input type="text" name="note" value="<?= $h($r['office_note'] ?? '') ?>" placeholder="メモ" size="40">　<button>保存</button></form>
-<form method="post" style="margin-top:8px" onsubmit="return confirm('この人の今年の入力と写真をすべて消します。前年は残ります。よろしいですか？')"><input type="hidden" name="act" value="reset_emp"><input type="hidden" name="client" value="<?= $client ?>"><input type="hidden" name="emp" value="<?= $h($emp) ?>"><button class="g" style="background:#C8372D">今年の入力をリセット</button></form>
+<form method="post" style="margin-top:8px" onsubmit="return confirm('この人の今年の入力と写真をすべて消します。前年は残ります。よろしいですか？')"><?= csrf_field() ?><input type="hidden" name="act" value="reset_emp"><input type="hidden" name="client" value="<?= $client ?>"><input type="hidden" name="emp" value="<?= $h($emp) ?>"><button class="g" style="background:#C8372D">今年の入力をリセット</button></form>
 </div>
 <div class="card"><h2>本人が訂正した項目</h2><?php if (empty($r['changes'])) echo '<p><small>なし</small></p>'; else { echo '<ul>'; foreach ($r['changes'] as $ch) echo '<li><small>' . $h(date('m/d H:i', strtotime($ch['at']))) . '</small> ' . $h($ch['what']) . '</li>'; echo '</ul>'; } ?></div>
 <div class="card"><h2>判定結果</h2>

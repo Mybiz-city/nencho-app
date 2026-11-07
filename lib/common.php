@@ -2,6 +2,48 @@
 // 共通：設定・保存・小道具
 declare(strict_types=1);
 mb_internal_encoding('UTF-8');
+ini_set('display_errors', '0'); // エラーの中身を画面に出さない（ログにだけ残す）
+error_reporting(E_ALL);
+
+/** セッション開始（Cookieを守る設定つき） */
+function secure_session(string $name = 'nenchosid', int $lifetime = 28800): void {
+    if (session_status() === PHP_SESSION_ACTIVE) return;
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+    session_name($name);
+    session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'secure' => $https, 'httponly' => true, 'samesite' => 'Lax']);
+    ini_set('session.gc_maxlifetime', (string)$lifetime);
+    session_start();
+    if (!empty($_SESSION['_last']) && time() - $_SESSION['_last'] > $lifetime) { session_unset(); session_destroy(); session_start(); }
+    $_SESSION['_last'] = time();
+    if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(16));
+    header('Referrer-Policy: no-referrer');
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: SAMEORIGIN');
+}
+function csrf_field(): string { return '<input type="hidden" name="_t" value="' . htmlspecialchars($_SESSION['csrf'] ?? '') . '">'; }
+function csrf_check(): void { if ($_SERVER['REQUEST_METHOD'] === 'POST' && !hash_equals((string)($_SESSION['csrf'] ?? ''), (string)($_POST['_t'] ?? ''))) { http_response_code(400); exit('画面を開き直してから、もう一度操作してください（確認用の印が一致しません）'); } }
+
+/** 試行回数の制限。key ごとに window 秒間に max 回まで失敗できる。超えると false */
+function throttle_ok(string $key, int $max = 5, int $window = 900): bool {
+    $f = data_dir() . '/_throttle.json'; $d = json_load($f, []); $now = time();
+    foreach ($d as $k => $v) if (max($v['until'], $v['first']) < $now - 86400) unset($d[$k]);
+    $e = $d[$key] ?? ['n' => 0, 'until' => 0, 'first' => $now];
+    if ($e['until'] > $now) return false;
+    if ($now - $e['first'] > $window) $e = ['n' => 0, 'until' => 0, 'first' => $now];
+    $d[$key] = $e; json_save($f, $d);
+    return true;
+}
+function throttle_fail(string $key, int $max = 5, int $window = 900, int $lock = 900): void {
+    $f = data_dir() . '/_throttle.json'; $d = json_load($f, []); $now = time();
+    $e = $d[$key] ?? ['n' => 0, 'until' => 0, 'first' => $now];
+    if ($now - $e['first'] > $window) $e = ['n' => 0, 'until' => 0, 'first' => $now];
+    $e['n']++;
+    if ($e['n'] >= $max) { $e['until'] = $now + $lock; $e['n'] = 0; $e['first'] = $now; }
+    $d[$key] = $e; json_save($f, $d);
+}
+function throttle_clear(string $key): void { $f = data_dir() . '/_throttle.json'; $d = json_load($f, []); unset($d[$key]); json_save($f, $d); }
+function client_ip(): string { return (string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'); }
+function audit(string $what): void { file_put_contents(data_dir() . '/_audit.log', date('c') . "\t" . client_ip() . "\t$what\n", FILE_APPEND | LOCK_EX); }
 
 function cfg(): array {
     static $c = null;

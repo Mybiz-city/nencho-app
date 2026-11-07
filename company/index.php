@@ -3,15 +3,18 @@
 // URL: company/?c=顧問先コード&k=合言葉（事務所画面で発行）
 declare(strict_types=1);
 require_once __DIR__ . '/../lib/common.php';
+secure_session('nencho_co', 7200);
 $cfg = cfg(); $year = $cfg['year'];
 $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
 $client = preg_replace('/\D/', '', (string)($_GET['c'] ?? $_POST['c'] ?? ''));
 $key = (string)($_GET['k'] ?? $_POST['k'] ?? '');
 $keys = json_load(data_dir() . '/_company_keys.json', []);
-if (strlen($client) !== 4 || empty($keys[$client]) || !hash_equals((string)$keys[$client], $key)) { http_response_code(403); exit('<meta charset="UTF-8"><p style="font-family:sans-serif;padding:30px">このページは開けません。事務所から届いたURLをそのまま開いてください。</p>'); }
+$kk = $keys[$client] ?? null; $expired = $kk && (time() - strtotime($kk['issued_at'] ?? '2000-01-01') > 90 * 86400);
+if (strlen($client) !== 4 || !$kk || $expired || !hash_equals((string)($kk['key'] ?? ''), $key)) { if (!throttle_ok('company:' . client_ip(), 10)) exit('試行回数が多すぎます'); throttle_fail('company:' . client_ip(), 10); audit("company page denied $client"); http_response_code(403); exit('<meta charset="UTF-8"><p style="font-family:sans-serif;padding:30px">このページは開けません。事務所から届いたURLをそのまま開いてください。</p>'); }
 $names = json_load(data_dir() . '/_clients.json', []);
 $cdir = data_dir() . "/$client/$year";
 if (!is_dir($cdir)) mkdir($cdir, 0700, true);
+csrf_check();
 $msg = '';
 
 function roster_path(string $client, string $emp): string { return emp_dir($client, $emp) . '/roster.json'; }
@@ -78,10 +81,10 @@ label{font-size:13px;color:#444}
 <p style="margin:0;font-size:14px">今年の年末調整の対象者を確認してください。<b>今年中に退職した方</b>は「退職」にして退職日を、<b>今年入社した方</b>で一覧にない方は下の欄から追加してください。入社日・退職日は分かる範囲で結構です。</p></div>
 <div class="card"><h2>従業員の一覧（<?= count($rows) ?>人）</h2>
 <?php foreach ($rows as $w): ?>
-<div class="it"><b><?= $h($w['name']) ?></b> <span class="note"><?= $w['birth'] ? $h(wareki_to_iso($w['birth']) ? $w['birth'] : $w['birth']) : '' ?></span>
+<div class="it"><b><?= $h($w['name']) ?></b> <span class="note"><?= $w['birth'] ? $h(substr($w['birth'], 0, 4)) . '年生まれ' : '' ?></span>
 <?= $w['status'] === 'retired' ? '<span class="st r">退職</span>' : '<span class="st g">在籍</span>' ?><?= $w['pending'] ? '<span class="st">コード発行待ち</span>' : '' ?>
 <span class="note" style="float:right"><?= ['submitted' => '入力済み', 'in_progress' => '入力中', 'new' => '未入力'][$w['app']] ?? '' ?></span>
-<form method="post" class="row"><input type="hidden" name="act" value="roster"><input type="hidden" name="c" value="<?= $client ?>"><input type="hidden" name="k" value="<?= $h($key) ?>"><input type="hidden" name="emp" value="<?= $h($w['emp']) ?>">
+<form method="post" class="row"><?= csrf_field() ?><input type="hidden" name="act" value="roster"><input type="hidden" name="c" value="<?= $client ?>"><input type="hidden" name="k" value="<?= $h($key) ?>"><input type="hidden" name="emp" value="<?= $h($w['emp']) ?>">
 <label>状態 <select name="status" onchange="this.form.querySelector('[name=retire]').style.display=this.value==='retired'?'inline-block':'none'"><option value="active" <?= $w['status'] !== 'retired' ? 'selected' : '' ?>>在籍</option><option value="retired" <?= $w['status'] === 'retired' ? 'selected' : '' ?>>退職</option></select></label>
 <label>入社日 <input type="date" name="hire" value="<?= $h($w['hire']) ?>"></label>
 <input type="date" name="retire" value="<?= $h($w['retire']) ?>" style="display:<?= $w['status'] === 'retired' ? 'inline-block' : 'none' ?>" title="退職日">
@@ -89,7 +92,7 @@ label{font-size:13px;color:#444}
 <?php endforeach; ?>
 </div>
 <div class="card"><h2>一覧にない従業員を追加する</h2>
-<form method="post"><input type="hidden" name="act" value="add"><input type="hidden" name="c" value="<?= $client ?>"><input type="hidden" name="k" value="<?= $h($key) ?>">
+<form method="post"><?= csrf_field() ?><input type="hidden" name="act" value="add"><input type="hidden" name="c" value="<?= $client ?>"><input type="hidden" name="k" value="<?= $h($key) ?>">
 <div class="row"><label>氏名<br><input type="text" name="name" placeholder="山田 太郎" required></label><label>フリガナ<br><input type="text" name="kana" placeholder="ヤマダ タロウ"></label></div>
 <div class="row"><label>生年月日<br><input type="date" name="birth" required></label><label>性別<br><select name="sex"><option value="">—</option><option>男</option><option>女</option></select></label><label>入社日<br><input type="date" name="hire"></label></div>
 <div class="row"><button>追加する</button></div>
