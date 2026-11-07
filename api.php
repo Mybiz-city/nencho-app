@@ -46,6 +46,8 @@ switch ($action) {
         $emp = resolve_emp($p['client'], $p['num']);
         if (!$emp) fail('この登録コードは見つかりません。数字をもう一度ご確認ください');
         $r0 = load_record($p['client'], $emp);
+        $ro = json_load(emp_dir($p['client'], $emp, false) . '/roster.json', []);
+        if (($ro['status'] ?? 'active') === 'retired') fail('退職された方は、この会社の年末調整の対象外です。源泉徴収票をもとにご自身で確定申告をしてください');
         $knownBirth = $r0['answers']['birth'] ?? ($r0['prev']['birth'] ?? null);
         if ($knownBirth) {
             $b = (string)($in['birth'] ?? '');

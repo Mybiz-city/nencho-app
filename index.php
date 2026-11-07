@@ -34,8 +34,8 @@ button{font-size:17px;padding:13px 14px;border:none;border-radius:12px;cursor:po
 .b1{background:var(--c);color:#fff;flex:1;font-weight:700}
 .b2{background:#fff;color:var(--cd);border:2px solid var(--c);flex:1;font-weight:700}
 .b3{background:#eee;color:#333}
-.big{display:flex;gap:12px;margin:14px 0}
-.big button{flex:1;padding:20px 10px;font-size:19px;font-weight:700;background:#fff;border:2px solid var(--c);color:var(--cd);border-radius:14px}
+.big{display:flex;gap:12px;margin:14px 0;flex-wrap:wrap}.big button:nth-child(3){flex-basis:100%;font-size:16px;padding:14px 10px}
+.big button{flex:1;padding:20px 10px;font-size:19px;min-width:0;font-weight:700;background:#fff;border:2px solid var(--c);color:var(--cd);border-radius:14px}
 .big button.sel,.big button:active{background:var(--c);color:#fff}
 .chk{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #eee;font-size:16px}
 .chk input{width:22px;height:22px}
@@ -125,10 +125,11 @@ function buildSteps(){
   s.push({id:'p_salary', sec:1, title:'今年の給与収入', html:()=>`<p>今年（1〜12月）にお勤め先から受ける給与・賞与の<b>見込み額</b>を入れてください。</p>${(R.prev_answers&&R.prev_answers.salary)?`<div class="prev">前年にアプリで入力した見込み：${yen(R.prev_answers.salary)}</div>`:(p.salary_total?`<div class="prev">前年の給与・賞与の実績：${yen(p.salary_total)}<br><span class="note">同じくらいなら、そのまま「次へ」。変わるなら直してください。</span></div>`:'')}<div class="yen"><input type="tel" id="salary" value="${esc(a.salary || (R.prev_answers&&R.prev_answers.salary) || p.salary_total || '')}" placeholder="例：3,500,000"></div>
     <div class="hint">税込の総支給額です。交通費などの非課税分は除きます。給与明細の「総支給額」を12か月分足した目安で構いません。1円単位でなくても大丈夫です。</div>`,
     next: async()=>{ const v=Number($('#salary').value.replace(/[^\d]/g,'')); if(!v) throw new Error('金額を入れてください'); await save({salary:v}); }});
-  s.push({id:'p_other', sec:1, title:'給与以外の収入', html:()=>`<p>今年、給与以外の収入（年金、事業、不動産、副業など）はありますか？</p>${big('has_other_income',[['no','ない'],['yes','ある']], a.has_other_income)}
-    <div id="oibox" style="display:${a.has_other_income==='yes'?'block':'none'}">${incomesHtml('oi', (a.other_incomes||[]).length? a.other_incomes : [{type:'pension',amount:''}])}</div>`,
-    mount:()=>{ document.querySelectorAll('[data-k=has_other_income]').forEach(b=>b.addEventListener('click',()=>{$('#oibox').style.display=b.dataset.v==='yes'?'block':'none';})); },
-    next: async()=>{ const v=pick('has_other_income'); if(!v) throw new Error('どちらかを選んでください'); await save({has_other_income:v, other_incomes: v==='yes'? readIncomes('oi'): []}); }});
+  s.push({id:'p_other', sec:1, title:'給与以外の収入', html:()=>`<p>今年、給与以外の収入（年金、事業、不動産、副業など）はありますか？</p>${big('has_other_income',[['no','ない'],['yes','ある'],['unknown','あるが、金額の見積もりが難しい']], a.has_other_income)}
+    <div id="oibox" style="display:${a.has_other_income==='yes'?'block':'none'}">${incomesHtml('oi', (a.other_incomes||[]).length? a.other_incomes : [{type:'pension',amount:''}])}</div>
+    <div id="oiunk" class="hint" style="display:${a.has_other_income==='unknown'?'block':'none'}">年末調整は給与分で行い、給与以外の所得はご自身で確定申告してください（給与以外の所得が20万円を超える方は、もともと確定申告が必要です）。</div>`,
+    mount:()=>{ document.querySelectorAll('[data-k=has_other_income]').forEach(b=>b.addEventListener('click',()=>{$('#oibox').style.display=b.dataset.v==='yes'?'block':'none'; $('#oiunk').style.display=b.dataset.v==='unknown'?'block':'none';})); },
+    next: async()=>{ const v=pick('has_other_income'); if(!v) throw new Error('どれかを選んでください'); await save({has_other_income:v, other_incomes: v==='yes'? readIncomes('oi'): []}); }});
   s.push({id:'p_emp2', sec:1, title:'ほかの勤務先', html:()=>`<p>今、2か所以上で働いていますか？</p>${big('other_employer',[['no','いいえ'],['yes','はい']], a.other_employer)}
     <div id="e2box" style="display:${a.other_employer==='yes'?'block':'none'}"><p>「扶養控除等申告書」はどちらに出しますか？<span class="note">主たる勤め先（1か所）にしか出せません。</span></p>${big('other_employer_decl',[['here','この会社'],['other','別の勤務先']], a.other_employer_decl)}</div>
     <div class="hint">別の勤務先に出す場合、この会社では年末調整をせず、ご自身で確定申告をします。</div>`,
@@ -142,7 +143,7 @@ function buildSteps(){
     <div class="chk"><input type="checkbox" id="f_hitori" ${f.hitorioya?'checked':''}><span>ひとり親（子を一人で育てている。所得500万円以下）</span></div>
     <div class="chk"><input type="checkbox" id="f_student" ${f.student?'checked':''}><span>勤労学生（学生で年収163万円以下）</span></div>`; },
     mount:()=>{ $('#f_dis').addEventListener('change',()=>{$('#f_dis_box').style.display=$('#f_dis').value!=='none'?'block':'none';}); },
-    next: async()=>{ await save({self_flags:{disability:$('#f_dis').value, disability_text:$('#f_dis_text').value.trim(), kafu:$('#f_kafu').checked, hitorioya:$('#f_hitori').checked, student:$('#f_student').checked}}); }});
+    next: async()=>{ await save({self_flags:{disability:$('#f_dis').value, disability_text:$('#f_dis_text').value.trim(), kafu:$('#f_kafu').checked, hitorioya:$('#f_hitori').checked, student:$('#f_student').checked}}); const w=(R.computed.warnings||[]).find(x=>/寡婦|勤労学生/.test(x)); if(w) toast(w); }});
   if ((a.self_flags||{}).disability && a.self_flags.disability!=='none') s.push(photoStep('p_dis_photo',1,'障害者手帳の写真','手帳の表面（氏名・手帳の種類・等級が分かる面）を撮ってください。読み取った種類と等級は「障害・寡婦・ひとり・勤労」の欄に入ります。','techo'));
   s.push({id:'p_since', sec:1, title:'今年の在籍', html:()=>`<p>今年の1月1日から、この会社に在籍していますか？</p>${big('since_jan',[['yes','はい'],['no','いいえ']], a.since_jan)}
     <div id="pibox" style="display:${a.since_jan==='no'?'block':'none'}"><p style="margin-top:14px">今年の1月以降に、前の勤務先から給与の支払いがありましたか？</p>${big('prev_income',[['no','なかった'],['yes','あった']], a.prev_income)}
@@ -177,6 +178,8 @@ function buildSteps(){
   // 家族・配偶者の障害者手帳
   const disPeople = [...(a.has_spouse==='yes'&&(a.spouse||{}).disability&&a.spouse.disability!=='none'? [a.spouse.name]:[]), ...fam.filter(f=>f.disability&&f.disability!=='none').map(f=>f.name)];
   if (disPeople.length) s.push(photoStep('f_dis_photo',3,'ご家族の障害者手帳','次の方の手帳の表面を1人ずつ撮ってください：'+disPeople.map(esc).join('、'),'techo'));
+  const abroadPeople = [...(a.has_spouse==='yes'&&(a.spouse||{}).living==='abroad'? [a.spouse.name]:[]), ...fam.filter(f=>f.living==='abroad'&&!isOut(f)).map(f=>f.name)];
+  if (abroadPeople.length) s.push(photoStep('f_abroad_photo',3,'国外に住む家族の書類','次の方について、親族関係書類（戸籍の附票や出生証明書など）と送金関係書類（送金の控えやカード利用明細）を撮ってください：'+abroadPeople.map(esc).join('、')+'。外国語の書類は訳文も必要です。手元にないものは、後日会社に提出してください。','kokugai'));
 
   // 4 証明書
   s.push(certStep('c_life', '生命保険・医療保険・個人年金', '生命保険料控除証明書（はがき・PDFを印刷したもの）はありますか？', 'life'));
@@ -327,7 +330,8 @@ function compareHtml(){
   add('小規模企業共済・iDeCo', yen(am.kyosai||0), yen(sumBy(['kyosai','ideco'])));
   add('住宅ローン年末残高', yen(am.zandaka1||0), yen(sumBy(['jutaku'])));
   const photos=(R.certs||[]).filter(x=>x.status!=='deleted').length;
-  return `<p>前年の登録と今年の入力を並べました。<b>色が付いた行</b>が変わった項目です。</p><table class="cmp"><tr><th></th><th>前年</th><th>今年</th></tr>${rows.map(r=>`<tr class="${r[3]?'chg':''}"><th>${r[0]}</th><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</table>
+  const warns=(c.warnings||[]).map(w=>`<div class="hint" style="border-left-color:var(--red)">${esc(w)}</div>`).join('');
+  return `${warns}<p>前年の登録と今年の入力を並べました。<b>色が付いた行</b>が変わった項目です。</p><table class="cmp"><tr><th></th><th>前年</th><th>今年</th></tr>${rows.map(r=>`<tr class="${r[3]?'chg':''}"><th>${r[0]}</th><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</table>
   <p style="margin-top:12px">提出した写真：<b>${photos}枚</b></p><div class="hint">内容に間違いがなければ「この内容で提出する」を押してください。提出後も、もう一度開けば直せます。</div>`;
 }
 

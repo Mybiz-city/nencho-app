@@ -100,6 +100,21 @@ if (($_GET['act'] ?? '') === 'photo') {
     $p = emp_dir(preg_replace('/\D/', '', (string)$_GET['client']), (string)$_GET['emp'], false) . '/photos/' . basename((string)$_GET['f']);
     if (file_exists($p)) { header('Content-Type: ' . mime_content_type($p)); readfile($p); } exit;
 }
+// 会社用ページの合言葉を発行
+if (($_POST['act'] ?? '') === 'company_key') {
+    $client = preg_replace('/\D/', '', (string)$_POST['client']);
+    $keys = json_load(data_dir() . '/_company_keys.json', []);
+    if (strlen($client) === 4) { $keys[$client] = $keys[$client] ?? bin2hex(random_bytes(12)); json_save(data_dir() . '/_company_keys.json', $keys); $msg = "会社用ページのURLを用意しました（$client）"; }
+}
+// 会社が追加した人（Nコード）に日本ICSの個人コードを割り当てる
+if (($_POST['act'] ?? '') === 'assign_code') {
+    $client = preg_replace('/\D/', '', (string)$_POST['client']); $old = (string)$_POST['old']; $new = trim((string)$_POST['new']);
+    $od = emp_dir($client, $old, false); $nd = emp_dir($client, $new, false);
+    if (!is_dir($od)) $msg = '元のフォルダがありません';
+    elseif (is_dir($nd)) $msg = 'その個人コードは既にあります';
+    elseif ($new === '') $msg = '個人コードを入れてください';
+    else { rename($od, $nd); $r = json_load("$nd/answers.json"); if ($r) { $r['emp'] = $new; json_save("$nd/answers.json", $r); } $msg = "$old → $new に割り当てました。登録コード：$client" . code_digits($new); }
+}
 // 状態の手動変更・メモ
 if (($_POST['act'] ?? '') === 'reset_emp') {
     $client = preg_replace('/\D/', '', (string)$_POST['client']); $emp = (string)$_POST['emp'];
@@ -172,14 +187,17 @@ foreach ($clients as $cd):
         $code = $r['emp'] ?? ($prev['code'] ?? $emp);
         $st = $r['status'] ?? 'new'; $cnt[$st] = ($cnt[$st] ?? 0) + 1;
         $name = $r['answers']['name'] ?? ($prev ? $prev['sei'] . ' ' . $prev['mei'] : '');
-        $rows[] = [$code, $name, $st, $r['submitted_at'] ?? ($r['updated_at'] ?? ''), count(array_filter($r['certs'] ?? [], fn($c) => ($c['status'] ?? '') !== 'deleted')), !empty($r['office_checked_at'])];
+        $ro = json_load("$ed/roster.json", []);
+        $rows[] = [$code, $name, $st, $r['submitted_at'] ?? ($r['updated_at'] ?? ''), count(array_filter($r['certs'] ?? [], fn($c) => ($c['status'] ?? '') !== 'deleted')), !empty($r['office_checked_at']), $ro];
     }
 ?>
+<?php $ckeys = json_load(data_dir() . '/_company_keys.json', []); $base = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . preg_replace('#/admin/.*$#', '', $_SERVER['REQUEST_URI']); ?>
 <h3 style="margin:14px 0 6px"><?= $h($client) ?> <?= $h($clientNames[$client] ?? '') ?>　<small>提出 <?= $cnt['submitted'] ?> ／ 入力中 <?= $cnt['in_progress'] ?> ／ 未着手 <?= $cnt['new'] ?></small>
+　<?php if (!empty($ckeys[$client])): ?><small>会社用ページ：<input type="text" readonly value="<?= $h("$base/company/?c=$client&k=" . $ckeys[$client]) ?>" size="60" onclick="this.select()"></small><?php else: ?><form method="post" style="display:inline"><input type="hidden" name="act" value="company_key"><input type="hidden" name="client" value="<?= $client ?>"><button class="g" style="font-size:12px;padding:4px 8px">会社用ページのURLを作る</button></form><?php endif; ?>
 　<a class="btn" href="?act=export&client=<?= $client ?>">提出済みをCSVで出す</a> <a class="btn g" href="?act=export&client=<?= $client ?>&all=1">全員分を出す</a></h3>
-<table><tr><th>登録コード<br><small>（下はICSの個人コード）</small></th><th>氏名</th><th>状態</th><th>最終更新</th><th>写真</th><th>事務所確認</th><th></th></tr>
+<table><tr><th>登録コード<br><small>（下はICSの個人コード）</small></th><th>氏名</th><th>在籍</th><th>状態</th><th>最終更新</th><th>写真</th><th>事務所確認</th><th></th></tr>
 <?php foreach ($rows as $w): ?>
-<tr><td><b><?= $h($client . code_digits($w[0])) ?></b><br><small><?= $h($w[0]) ?></small></td><td><?= $h($w[1]) ?></td><td><span class="st <?= $w[2] ?>"><?= ['submitted' => '提出済み', 'in_progress' => '入力中', 'new' => '未着手'][$w[2]] ?? $w[2] ?></span></td><td><?= $w[3] ? $h(date('m/d H:i', strtotime($w[3]))) : '' ?></td><td><?= $w[4] ?>枚</td><td><?= $w[5] ? '✓' : '' ?></td><td><a href="?v=emp&client=<?= $client ?>&emp=<?= rawurlencode($w[0]) ?>">開く</a></td></tr>
+<tr><td><?php if (str_starts_with($w[0], 'N')): ?><form method="post" style="display:inline"><input type="hidden" name="act" value="assign_code"><input type="hidden" name="client" value="<?= $client ?>"><input type="hidden" name="old" value="<?= $h($w[0]) ?>"><small>会社が追加</small><br><input type="text" name="new" size="9" placeholder="**000021"><button style="font-size:12px;padding:3px 6px">割当</button></form><?php else: ?><b><?= $h($client . code_digits($w[0])) ?></b><br><small><?= $h($w[0]) ?></small><?php endif; ?></td><td><?= $h($w[1]) ?></td><td><?= ($w[6]['status'] ?? 'active') === 'retired' ? '<span class="st" style="background:#fdecea;color:#C8372D">退職 ' . $h($w[6]['retire'] ?? '') . '</span>' : '在籍' ?><?= !empty($w[6]['hire']) ? '<br><small>入社 ' . $h($w[6]['hire']) . '</small>' : '' ?></td><td><span class="st <?= $w[2] ?>"><?= ['submitted' => '提出済み', 'in_progress' => '入力中', 'new' => '未着手'][$w[2]] ?? $w[2] ?></span></td><td><?= $w[3] ? $h(date('m/d H:i', strtotime($w[3]))) : '' ?></td><td><?= $w[4] ?>枚</td><td><?= $w[5] ? '✓' : '' ?></td><td><a href="?v=emp&client=<?= $client ?>&emp=<?= rawurlencode($w[0]) ?>">開く</a></td></tr>
 <?php endforeach; ?></table>
 <?php endforeach; ?>
 </div>

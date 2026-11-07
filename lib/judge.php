@@ -160,5 +160,14 @@ function compute(array $r): array {
 
     // 生命保険料の6万円特例の対象（23歳未満の扶養親族がいる）
     $out['life_ins_6man'] = $adjustTarget !== null;
+    // 要件に引っかかる場合だけ出す警告
+    $w = [];
+    $sf = $a['self_flags'] ?? [];
+    if ((!empty($sf['kafu']) || !empty($sf['hitorioya'])) && $self['total_income'] > 5000000) $w[] = '寡婦・ひとり親控除は、本人の所得が500万円以下の方が対象です。今年の所得見込みが500万円を超えているため、対象外になる見込みです。';
+    if (!empty($sf['student']) && $self['total_income'] > $t['working_student_income_max']) $w[] = '勤労学生控除は、所得' . number_format($t['working_student_income_max']) . '円以下の方が対象です。今年の見込みでは対象外です。';
+    if (($a['has_spouse'] ?? 'no') === 'yes' && $self['total_income'] > $t['self_income_max_for_spouse']) $w[] = '本人の所得が1,000万円を超えるため、配偶者控除・配偶者特別控除は受けられません（配偶者の情報は提出してください）。';
+    if (($a['has_other_income'] ?? '') === 'unknown') $w[] = '給与以外の所得の見積もりが難しいとのことなので、年末調整は給与分で行い、ご自身で確定申告をしてください。';
+    foreach ($fam as $f) if (($f['living'] ?? '') === 'abroad' && ($f['class'] ?? '') !== '対象外' && ($f['supporter'] ?? 'self') === 'self') { $w[] = '国外に住む家族を扶養にするには、親族関係書類と送金関係書類の提出が必要です（写真の画面があります）。'; break; }
+    $out['warnings'] = $w;
     return $out;
 }

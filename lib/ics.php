@@ -287,6 +287,9 @@ function ics_export(string $client, bool $onlySubmitted = true): string {
     else { $lines[] = ['給与', '12', '月分', 'FMT', '1', 'DBVER', '1,10,4,3']; $lines[] = ['タイプ６', 'SL=4', '個人コードタイプ', '0', '6']; $lines[] = array_fill(0, ICS_COLS, ''); }
     foreach (glob("$cdir/*/answers.json") ?: [] as $f) {
         $r = json_load($f);
+        $ro = json_load(dirname($f) . '/roster.json', []);
+        if (($ro['status'] ?? 'active') === 'retired') continue; // 退職者は出さない
+        if (str_starts_with((string)($r['emp'] ?? ''), 'N')) continue;   // 個人コード未割当
         if ($onlySubmitted && ($r['status'] ?? '') !== 'submitted') continue;
         $lines[] = ics_row_from_record($r);
     }
