@@ -85,3 +85,29 @@ function claude_read_cert(string $imagePath, string $kind = 'cert'): array {
     $out['usage'] = $j['usage'] ?? null;
     return $out;
 }
+
+/** 画像またはPDF → 指示（prompt）どおりのJSON（配列）。失敗は例外。ふるさと納税の推移試算表・確定申告書の読み取りに使う */
+function claude_read_json(string $path, string $prompt, int $maxTokens = 3000): array {
+    $c = cfg();
+    if (empty($c['anthropic_api_key'])) throw new RuntimeException('AI読み取りは設定されていません');
+    $mime = mime_content_type($path) ?: 'application/octet-stream';
+    $b64 = base64_encode((string)file_get_contents($path));
+    if ($mime === 'application/pdf') $block = ['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => 'application/pdf', 'data' => $b64]];
+    elseif (in_array($mime, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) $block = ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $mime, 'data' => $b64]];
+    else throw new RuntimeException('対応していないファイル形式です（JPEG・PNG・PDF）');
+    $body = ['model' => $c['anthropic_model'], 'max_tokens' => $maxTokens, 'messages' => [['role' => 'user', 'content' => [$block, ['type' => 'text', 'text' => $prompt]]]]];
+    $ch = curl_init('https://api.anthropic.com/v1/messages');
+    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 90,
+        CURLOPT_HTTPHEADER => ['content-type: application/json', 'x-api-key: ' . $c['anthropic_api_key'], 'anthropic-version: 2023-06-01'],
+        CURLOPT_POSTFIELDS => json_encode($body)]);
+    $res = curl_exec($ch); $err = curl_error($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    if ($res === false) throw new RuntimeException('通信に失敗しました: ' . $err);
+    $j = json_decode((string)$res, true);
+    if ($code !== 200) throw new RuntimeException('AIの応答エラー(' . $code . '): ' . ($j['error']['message'] ?? substr((string)$res, 0, 200)));
+    $text = ''; foreach ($j['content'] ?? [] as $blk) if (($blk['type'] ?? '') === 'text') $text .= $blk['text'];
+    if (preg_match('/\{.*\}/s', $text, $m)) $text = $m[0];
+    $out = json_decode($text, true);
+    if (!is_array($out)) throw new RuntimeException('読み取り結果を解釈できませんでした');
+    $out['usage'] = $j['usage'] ?? null;
+    return $out;
+}

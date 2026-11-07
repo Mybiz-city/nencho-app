@@ -24,7 +24,8 @@
 | furusato/index.html | 給与の人向け（スマホ向け）。手入力でも使え、年末調整の完了画面の「ふるさと納税の目安を見る」から開くと本人の入力を取り込む |
 | furusato/api.php | 年末調整の入力（answers.json）を、シミュレーションの欄の形に詰め替えて返す（ログイン中の本人だけ） |
 | furusato/calc.js | 限度額の計算部品。画面に触らない純粋な計算 |
-| furusato/pro.html | 個人事業主向け（ICSの試算表CSV・前年の申告書PDFをドロップ）。pdf.js 同梱で約2.4MB |
+| furusato/pro.html | 個人事業主向け。推移損益（推移試算表）と前年の確定申告書を写真・PDFで送るとAIが読む。CSV・JSONのドロップも可 |
+| furusato/ocr.php | 写真・PDF → Claude API で読み取り（推移損益の月別所得、申告書の所得控除）。ファイルは残さない。IPごとに1時間30回まで |
 
 - URL：`https://metis.tax/nencho/furusato/`（単独）、`…/furusato/?from=nencho`（年末調整から）
 - すべて概算。給与天引きの社会保険料は年収×15.5%を初期値にして本人が直す。保険料がAI読み取り前なら本人が概算で入れる
