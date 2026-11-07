@@ -14,13 +14,15 @@ $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
 if (($_POST['act'] ?? '') === 'login') {
     $tk = 'admin:' . client_ip();
     if (!throttle_ok($tk, 5)) { audit('admin locked'); exit('<meta charset="UTF-8"><p style="font-family:sans-serif;padding:30px">試行回数が多すぎます。15分後にやり直してください。</p>'); }
-    if (hash_equals((string)$cfg['admin_password'], (string)($_POST['pw'] ?? ''))) { $_SESSION['admin'] = true; session_regenerate_id(true); throttle_clear($tk); audit('admin login ok'); }
+    $pwOk = hash_equals((string)$cfg['admin_password'], (string)($_POST['pw'] ?? ''));
+    $otpOk = empty($cfg['admin_totp_secret']) || totp_verify((string)$cfg['admin_totp_secret'], (string)($_POST['otp'] ?? ''));
+    if ($pwOk && $otpOk) { $_SESSION['admin'] = true; session_regenerate_id(true); throttle_clear($tk); audit('admin login ok'); }
     else { throttle_fail($tk, 5); audit('admin login ng'); usleep(500000); }
     header('Location: ./'); exit;
 }
 if (($_GET['act'] ?? '') === 'logout') { unset($_SESSION['admin']); header('Location: ./'); exit; }
 if (empty($_SESSION['admin'])) {
-    echo '<!DOCTYPE html><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex"><title>事務所ログイン</title><body style="font-family:sans-serif;max-width:360px;margin:60px auto;padding:0 16px"><h2>事務所画面</h2><form method="post"><input type="hidden" name="act" value="login">' . csrf_field() . '<input type="password" name="pw" placeholder="パスワード" style="width:100%;font-size:18px;padding:10px"><button style="width:100%;font-size:18px;padding:10px;margin-top:10px;background:#00A88E;color:#fff;border:0;border-radius:8px">ログイン</button></form>';
+    echo '<!DOCTYPE html><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex"><title>事務所ログイン</title><body style="font-family:sans-serif;max-width:360px;margin:60px auto;padding:0 16px"><h2>事務所画面</h2><form method="post"><input type="hidden" name="act" value="login">' . csrf_field() . '<input type="password" name="pw" placeholder="パスワード" style="width:100%;font-size:18px;padding:10px">' . (!empty($cfg['admin_totp_secret']) ? '<input type="tel" name="otp" placeholder="認証アプリの6桁" inputmode="numeric" style="width:100%;font-size:18px;padding:10px;margin-top:8px">' : '') . '<button style="width:100%;font-size:18px;padding:10px;margin-top:10px;background:#00A88E;color:#fff;border:0;border-radius:8px">ログイン</button></form>';
     exit;
 }
 
@@ -147,6 +149,12 @@ if (($_POST['act'] ?? '') === 'seal') {
 }
 if (($_GET['act'] ?? '') === 'archive_dl') { $f = data_dir() . '/_archive/' . basename((string)$_GET['f']); if (file_exists($f)) { header('Content-Type: application/zip'); header('Content-Disposition: attachment; filename="' . basename($f) . '"'); readfile($f); } exit; }
 if (($_POST['act'] ?? '') === 'archive_rm') { $f = data_dir() . '/_archive/' . basename((string)$_POST['f']); if (file_exists($f)) { unlink($f); audit('archive removed ' . basename($f)); $msg = '封印ファイルをサーバーから消しました'; } }
+// 5年を過ぎた年の削除
+if (($_POST['act'] ?? '') === 'purge') {
+    $py = preg_replace('/\D/', '', (string)$_POST['purge_year']);
+    if ((int)$py > $year - 5) $msg = '5年を過ぎた年だけ削除できます';
+    else { $n = 0; foreach (glob(data_dir() . "/*/$py", GLOB_ONLYDIR) ?: [] as $yd) { $rit = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($yd, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST); foreach ($rit as $f) { $f->isDir() ? rmdir($f->getPathname()) : unlink($f->getPathname()); $n++; } rmdir($yd); } audit("purged year $py ($n)"); $msg = "$py 年分を削除しました"; }
+}
 // 会社用ページの合言葉を発行
 if (($_POST['act'] ?? '') === 'company_key') {
     $client = preg_replace('/\D/', '', (string)$_POST['client']);
@@ -238,11 +246,18 @@ $years = array_values(array_unique(array_filter(array_map(fn($d) => basename($d)
 <h2 style="margin-top:14px">郵便番号 → 市区町村コード</h2>
 <?php $zd = json_load(data_dir() . '/_zip2city.json'); ?>
 <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="act" value="zipdict"><button class="g">日本郵便から辞書を取り込む（年1回）</button></form>　<small><?= $zd ? '取込済み：' . $h(date('Y-m-d', strtotime($zd['updated_at']))) . '（' . count($zd['map']) . '件）' : '未取込' ?></small>
-<h2 style="margin-top:14px">過年度の封印（今年と前年より古い年）</h2>
+<h2 style="margin-top:14px">事務所画面の2段階認証</h2>
+<?php if (!empty($cfg['admin_totp_secret'])): ?><p><small>有効です（ログイン時に認証アプリの6桁が必要）。</small></p><?php else: ?>
+<?php $sug = ''; $al = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; for ($i = 0; $i < 20; $i++) $sug .= $al[random_int(0, 31)]; ?>
+<p><small>未設定。有効にするには、config.php の <code>'admin_totp_secret' => ''</code> に次の文字列を入れ、スマホの認証アプリ（Google Authenticator など）で「手動で入力」→ この文字列を登録します。<br>秘密の文字列（この画面を開くたびに違うものが出ます。使うものを1つ控える）：<b><?= $sug ?></b><br>認証アプリ側の名前は「メーティス年調」、種類は「時間ベース」。</small></p><?php endif; ?>
+<h2 style="margin-top:14px">保管と削除</h2>
+<p><small>データはこのサーバーに <b>5年間</b> 保管し、それより古い年は削除する運用です。今年：<?= $year ?>年分。削除できる年：<?= implode('、', array_filter($years, fn($yy) => (int)$yy <= $year - 5)) ?: 'なし' ?></small></p>
+<form method="post" onsubmit="return confirm('この年のデータをサーバーから完全に消します。元に戻せません。よろしいですか？')"><?= csrf_field() ?><input type="hidden" name="act" value="purge">年<select name="purge_year"><?php foreach ($years as $yy) if ((int)$yy <= $year - 5) echo "<option>$yy</option>"; ?></select>　<button class="g" style="background:#C8372D">5年を過ぎた年を削除する</button></form>
+<details style="margin-top:8px"><summary style="cursor:pointer"><small>別の選択：封印して手元に移す（暗号化ZIP）</small></summary>
 <form method="post" onsubmit="return confirm('この年のデータをパスワード付きZIPにまとめ、サーバーの元データを消します。よろしいですか？')"><?= csrf_field() ?><input type="hidden" name="act" value="seal">
 年<select name="seal_year"><?php foreach ($years as $yy) if ((int)$yy < $year - 1) echo "<option>$yy</option>"; ?></select>　パスワード（12文字以上）<input type="text" name="seal_pw" size="24">　<button class="g" style="background:#C8372D">封印する</button>
 <br><small>暗号化ZIP（AES-256）にしてから元データを消します。パスワードは事務所で別に保管してください（忘れると開けません）。</small></form>
-<?php $arcs = glob(data_dir() . '/_archive/*.zip') ?: []; if ($arcs): ?><p><small>封印済み：</small><?php foreach ($arcs as $af): ?><br><a href="?act=archive_dl&f=<?= rawurlencode(basename($af)) ?>"><?= $h(basename($af)) ?></a>（<?= round(filesize($af) / 1048576, 1) ?> MB）<form method="post" style="display:inline" onsubmit="return confirm('ダウンロード済みですか？サーバーから消します')"><?= csrf_field() ?><input type="hidden" name="act" value="archive_rm"><input type="hidden" name="f" value="<?= $h(basename($af)) ?>"><button class="g" style="font-size:11px;padding:2px 6px">サーバーから消す</button></form><?php endforeach; ?></p><?php endif; ?>
+<?php $arcs = glob(data_dir() . '/_archive/*.zip') ?: []; if ($arcs): ?><p><small>封印済み：</small><?php foreach ($arcs as $af): ?><br><a href="?act=archive_dl&f=<?= rawurlencode(basename($af)) ?>"><?= $h(basename($af)) ?></a>（<?= round(filesize($af) / 1048576, 1) ?> MB）<form method="post" style="display:inline" onsubmit="return confirm('ダウンロード済みですか？サーバーから消します')"><?= csrf_field() ?><input type="hidden" name="act" value="archive_rm"><input type="hidden" name="f" value="<?= $h(basename($af)) ?>"><button class="g" style="font-size:11px;padding:2px 6px">サーバーから消す</button></form><?php endforeach; ?></p><?php endif; ?></details>
 <h2 style="margin-top:14px">3. 前年データのない人を追加</h2>
 <form method="post"><?= csrf_field() ?><input type="hidden" name="act" value="add_emp">顧問先コード<input type="text" name="client" size="6">　個人コード（日本ICSと同じ）<input type="text" name="emp" size="10" placeholder="**000021">　<button>作る</button></form>
 </div></details>

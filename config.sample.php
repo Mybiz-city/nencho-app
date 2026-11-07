@@ -13,6 +13,8 @@ return [
 
     // 事務所画面のパスワード（長めに）
     'admin_password' => 'ここを変える',
+    // 事務所画面の2段階認証（任意）。Google Authenticator などに登録する秘密の文字列（英大文字と2〜7、16文字以上）。空なら使わない
+    'admin_totp_secret' => '',
 
     // Claude API（証明書の読み取り）。空なら読み取りを使わず手入力のみ
     'anthropic_api_key' => '',

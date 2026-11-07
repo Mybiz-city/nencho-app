@@ -42,6 +42,24 @@ function throttle_fail(string $key, int $max = 5, int $window = 900, int $lock =
     $d[$key] = $e; json_save($f, $d);
 }
 function throttle_clear(string $key): void { $f = data_dir() . '/_throttle.json'; $d = json_load($f, []); unset($d[$key]); json_save($f, $d); }
+/** ワンタイムパスワード（RFC6238, 30秒, 6桁）。secret は base32 */
+function base32_decode_str(string $s): string {
+    $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; $s = strtoupper(preg_replace('/[^A-Za-z2-7]/', '', $s)); $bits = ''; $out = '';
+    foreach (str_split($s) as $ch) $bits .= str_pad(decbin(strpos($alphabet, $ch)), 5, '0', STR_PAD_LEFT);
+    foreach (str_split($bits, 8) as $b) if (strlen($b) === 8) $out .= chr(bindec($b));
+    return $out;
+}
+function totp_code(string $secret, int $time): string {
+    $key = base32_decode_str($secret); $counter = pack('N*', 0) . pack('N*', intdiv($time, 30));
+    $h = hash_hmac('sha1', $counter, $key, true); $o = ord($h[19]) & 0xF;
+    $v = ((ord($h[$o]) & 0x7F) << 24) | (ord($h[$o + 1]) << 16) | (ord($h[$o + 2]) << 8) | ord($h[$o + 3]);
+    return str_pad((string)($v % 1000000), 6, '0', STR_PAD_LEFT);
+}
+function totp_verify(string $secret, string $code): bool {
+    $code = preg_replace('/\D/', '', $code); if (strlen($code) !== 6) return false;
+    foreach ([-1, 0, 1] as $w) if (hash_equals(totp_code($secret, time() + $w * 30), $code)) return true;
+    return false;
+}
 function client_ip(): string { return (string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'); }
 function audit(string $what): void { file_put_contents(data_dir() . '/_audit.log', date('c') . "\t" . client_ip() . "\t$what\n", FILE_APPEND | LOCK_EX); }
 
