@@ -127,7 +127,7 @@ function compute(array $r): array {
     $counts = [];
     $adjustTarget = null;
     foreach ($r['family'] ?? [] as $f) {
-        if (($f['change']['kind'] ?? '') === 'out') continue; // 今年扶養から出た人
+        if (($f['change']['kind'] ?? '') === 'out') { $f['class'] = '除外'; $fam[] = $f; continue; } // 今年扶養から出た人（一覧の並びを保つため残す）
         if (($f['supporter'] ?? 'self') !== 'self') { $f['class'] = '他者'; $fam[] = $f; continue; }
         $cls = dependent_class($f, $self['total_income']);
         if (($f['living'] ?? '') === 'apart' && ($f['remit_domestic'] ?? '') === 'no' && $cls !== '対象外') { $cls = '対象外'; $f['note'] = '別居で仕送りがないため、扶養の条件（生計を一にする）を満たしません'; }

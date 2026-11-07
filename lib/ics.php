@@ -201,6 +201,8 @@ function ics_row_from_record(array $r): array {
     for ($k = 0; $k < C['other_max']; $k++) for ($o = 0; $o < C['other_stride']; $o++) $row[C['other_base'] + $k * C['other_stride'] + $o] = '';
     $fi = 0; $oi = 0;
     foreach ($c['family'] as $f) {
+        if (($f['class'] ?? '') === '除外') continue;
+        if (($f['class'] ?? '') === '除外') continue;
         [$fs, $fm] = split_name($f['name'] ?? ''); [$fsk, $fmk] = split_name($f['kana'] ?? '');
         if (($f['supporter'] ?? 'self') !== 'self') {
             if ($oi >= C['other_max']) continue;

@@ -73,7 +73,15 @@ button{font-size:14px;padding:8px 14px;background:#00A88E;color:#fff;border:0;bo
 .st{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;background:#eee;margin-left:6px}.st.r{background:#fdecea;color:#C8372D}.st.g{background:#00A88E;color:#fff}
 .msg{background:#FFF8E1;border-left:4px solid #F2B705;padding:8px 12px;margin-bottom:12px;font-size:14px}
 label{font-size:13px;color:#444}
-</style></head><body>
+</style>
+<script>
+const YEAR=<?= (int)$year ?>;
+const eras=[['令',2019],['平',1989],['昭',1926],['大',1912],['明',1868]];
+function yl(y){ for(const [g,e] of eras){ if(y>=e){ const n=y-e+1; return y+'年（'+g+(n===1?'元':n)+'）'; } } return y+'年'; }
+function dsel(name,val,y0,y1){ const [y,m,d]=(val||'').split('-').map(Number); let h='<span class="dsel" data-name="'+name+'" style="display:inline-flex;gap:4px"><select class="y"><option value="">年</option>'; for(let i=y1;i>=y0;i--) h+='<option value="'+i+'"'+(i===y?' selected':'')+'>'+yl(i)+'</option>'; h+='</select><select class="m"><option value="">月</option>'; for(let i=1;i<=12;i++) h+='<option value="'+i+'"'+(i===m?' selected':'')+'>'+i+'月</option>'; h+='</select><select class="d"><option value="">日</option>'; for(let i=1;i<=31;i++) h+='<option value="'+i+'"'+(i===d?' selected':'')+'>'+i+'日</option>'; h+='</select><input type="hidden" name="'+name+'" value="'+(val||'')+'"></span>'; return h; }
+document.addEventListener('DOMContentLoaded',()=>{ document.querySelectorAll('input[type=date]').forEach(inp=>{ const isBirth=inp.name==='birth'; const span=document.createElement('span'); span.innerHTML=dsel(inp.name, inp.value, isBirth?1930:YEAR-3, YEAR); const el=span.firstChild; el.style.display=inp.style.display||'inline-flex'; inp.replaceWith(el); el.querySelectorAll('select').forEach(s=>s.addEventListener('change',()=>{ const y=el.querySelector('.y').value,m=el.querySelector('.m').value,d=el.querySelector('.d').value; el.querySelector('input').value=(y&&m&&d)?y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0'):''; })); });
+  document.querySelectorAll('select[name=status]').forEach(st=>st.addEventListener('change',()=>{ const el=st.form.querySelector('.dsel[data-name=retire]'); if(el) el.style.display=st.value==='retired'?'inline-flex':'none'; })); });
+</script></head><body>
 <header><b><?= $h($names[$client] ?? ('顧問先 ' . $client)) ?></b><br><small><?= $year ?>年 年末調整　在籍者の確認</small></header>
 <div class="wrap">
 <?php if ($msg): ?><div class="msg"><?= $h($msg) ?></div><?php endif; ?>
@@ -85,7 +93,7 @@ label{font-size:13px;color:#444}
 <?= $w['status'] === 'retired' ? '<span class="st r">退職</span>' : '<span class="st g">在籍</span>' ?><?= $w['pending'] ? '<span class="st">コード発行待ち</span>' : '' ?>
 <span class="note" style="float:right"><?= ['submitted' => '入力済み', 'in_progress' => '入力中', 'new' => '未入力'][$w['app']] ?? '' ?></span>
 <form method="post" class="row"><?= csrf_field() ?><input type="hidden" name="act" value="roster"><input type="hidden" name="c" value="<?= $client ?>"><input type="hidden" name="k" value="<?= $h($key) ?>"><input type="hidden" name="emp" value="<?= $h($w['emp']) ?>">
-<label>状態 <select name="status" onchange="this.form.querySelector('[name=retire]').style.display=this.value==='retired'?'inline-block':'none'"><option value="active" <?= $w['status'] !== 'retired' ? 'selected' : '' ?>>在籍</option><option value="retired" <?= $w['status'] === 'retired' ? 'selected' : '' ?>>退職</option></select></label>
+<label>状態 <select name="status"><option value="active" <?= $w['status'] !== 'retired' ? 'selected' : '' ?>>在籍</option><option value="retired" <?= $w['status'] === 'retired' ? 'selected' : '' ?>>退職</option></select></label>
 <label>入社日 <input type="date" name="hire" value="<?= $h($w['hire']) ?>"></label>
 <input type="date" name="retire" value="<?= $h($w['retire']) ?>" style="display:<?= $w['status'] === 'retired' ? 'inline-block' : 'none' ?>" title="退職日">
 <button>保存</button></form></div>
