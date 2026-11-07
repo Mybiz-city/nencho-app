@@ -85,6 +85,17 @@ function resolve_emp(string $client, string $num): ?string {
     return null;
 }
 
+/** 顧問先の個人コードの形（**000001 / 000001）に合わせて、次の番号を作る */
+function next_emp_code(string $client): string {
+    $cdir = data_dir() . "/$client/" . cfg()['year']; $max = 0; $prefix = ''; $width = 6;
+    foreach (glob("$cdir/*", GLOB_ONLYDIR) ?: [] as $d) {
+        $r = json_load("$d/answers.json") ?: json_load("$d/prev.json"); $emp = $r['emp'] ?? ($r['code'] ?? basename($d));
+        if (!preg_match('/^(\D*)(\d+)$/', $emp, $m)) continue;
+        if ((int)$m[2] > $max) { $max = (int)$m[2]; $prefix = $m[1]; $width = strlen($m[2]); }
+    }
+    return $prefix . str_pad((string)($max + 1), $width, '0', STR_PAD_LEFT);
+}
+
 /** 表示用の登録コード（0302-000001） */
 function display_code(string $client, string $emp): string { return $client . '-' . code_digits($emp); }
 

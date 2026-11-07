@@ -108,7 +108,16 @@ function ics_import(string $client, string $csvPath): array {
         $code = trim($row[C['code']] ?? '');
         if ($code === '') continue;
         $prev = ics_row_to_prev($row);
-        json_save(emp_dir($client, $code) . '/prev.json', $prev);
+        $ed = emp_dir($client, $code);
+        json_save("$ed/prev.json", $prev);
+        // 在籍情報：ICSの退職年月日・在職区分を優先して反映
+        $ro = json_load("$ed/roster.json", []);
+        $hire = wareki_to_iso($row[8] ?? ''); $retire = wareki_to_iso($row[9] ?? ''); $zai = trim((string)($row[125] ?? '')); // 在職区分（在職者／退職者）
+        if ($hire) $ro['hire'] = $hire;
+        if ($retire || str_contains($zai, '退職')) { $ro['status'] = 'retired'; if ($retire) $ro['retire'] = $retire; $ro['source'] = 'ics'; }
+        elseif (str_contains($zai, '在職')) { $ro['status'] = 'active'; $ro['retire'] = ''; $ro['source'] = 'ics'; }
+        $ro['ics_imported_at'] = date('c');
+        json_save("$ed/roster.json", $ro);
         $codes[] = $code;
     }
     return $codes;
@@ -287,8 +296,16 @@ function cert_key(string $cat, string $contract): ?string {
     };
 }
 
-/** 顧問先の提出済み（または全員）をCSVにして返す（Shift-JIS, CRLF） */
-function ics_export(string $client, bool $onlySubmitted = true, ?int $year = null): string {
+/** 年調で書き換える列だけ（給与実績・口座・徴収区分などは含めない） */
+function ics_nencho_columns(): array {
+    $cols = range(0, 23);            // 個人コード〜扶養親族区分（氏名・住所・区分）
+    $cols[] = 129;                   // 扶養控除申告の有無
+    foreach (range(132, 539) as $k) $cols[] = $k; // 保険料・配偶者・扶養親族・住宅など
+    return $cols;
+}
+
+/** 顧問先の提出済み（または全員）をCSVにして返す（Shift-JIS, CRLF）。$subset=true で年調項目の列だけ */
+function ics_export(string $client, bool $onlySubmitted = true, ?int $year = null, bool $subset = true): string {
     $cdir = data_dir() . "/$client/" . ($year ?? cfg()['year']);
     $meta = json_load("$cdir/_ics_meta.json");
     $lines = [];
@@ -301,6 +318,10 @@ function ics_export(string $client, bool $onlySubmitted = true, ?int $year = nul
         if (str_starts_with((string)($r['emp'] ?? ''), 'N')) continue;   // 個人コード未割当
         if ($onlySubmitted && ($r['status'] ?? '') !== 'submitted') continue;
         $lines[] = ics_row_from_record($r);
+    }
+    if ($subset) { // 3行目（項目名）以降を、年調項目の列だけに絞る。日本ICSは項目名で列を判断する
+        $keep = ics_nencho_columns();
+        foreach ($lines as $n => $l) if ($n >= 2) $lines[$n] = array_values(array_map(fn($k) => $l[$k] ?? '', $keep));
     }
     $out = '';
     foreach ($lines as $l) {

@@ -42,6 +42,31 @@ if (($_POST['act'] ?? '') === 'add') {
     }
 }
 
+// CSVで一括更新（氏名と生年月日で照合。見つからなければ追加）
+if (($_POST['act'] ?? '') === 'bulk' && !empty($_FILES['csv']['tmp_name'])) {
+    $raw = (string)file_get_contents($_FILES['csv']['tmp_name']); $enc = mb_detect_encoding($raw, ['UTF-8', 'SJIS-win'], true) ?: 'SJIS-win'; $text = mb_convert_encoding($raw, 'UTF-8', $enc);
+    $lines = array_values(array_filter(preg_split('/\r\n|\n|\r/', $text), fn($l) => trim($l) !== ''));
+    $hdr = array_map(fn($c) => trim(mb_convert_kana($c, 's')), str_getcsv($lines[0] ?? ''));
+    $col = fn(array $names) => (function () use ($hdr, $names) { foreach ($names as $n) { $i = array_search($n, $hdr, true); if ($i !== false) return $i; } return null; })();
+    $iName = $col(['氏名', '名前', '社員名']); $iKana = $col(['フリガナ', 'ふりがな', 'カナ']); $iBirth = $col(['生年月日']); $iHire = $col(['入社日', '入社年月日']); $iRet = $col(['退職日', '退職年月日']); $iSex = $col(['性別']);
+    if ($iName === null || $iBirth === null) $msg = '1行目に「氏名」と「生年月日」の見出しが必要です（入社日・退職日・フリガナ・性別は任意）';
+    else {
+        $existing = [];
+        foreach (glob("$cdir/*", GLOB_ONLYDIR) ?: [] as $ed) { $r = json_load("$ed/answers.json"); $p = json_load("$ed/prev.json"); $ro = json_load("$ed/roster.json", []); $nm = str_replace([' ', '　'], '', $r['answers']['name'] ?? ($p ? $p['sei'] . $p['mei'] : ($ro['name'] ?? ''))); $bd = $r['answers']['birth'] ?? ($p['birth'] ?? ($ro['birth'] ?? '')); $existing["$nm|$bd"] = basename($ed); }
+        $upd = 0; $add = 0; $skip = 0;
+        foreach (array_slice($lines, 1) as $line) {
+            $c = str_getcsv($line); $name = trim((string)($c[$iName] ?? '')); $birth = wareki_to_iso((string)($c[$iBirth] ?? '')) ?? '';
+            if ($name === '' || $birth === '') { $skip++; continue; }
+            $hire = $iHire !== null ? (wareki_to_iso((string)($c[$iHire] ?? '')) ?? '') : ''; $ret = $iRet !== null ? (wareki_to_iso((string)($c[$iRet] ?? '')) ?? '') : '';
+            $key = str_replace([' ', '　'], '', $name) . "|$birth";
+            if (isset($existing[$key])) { $emp = $existing[$key]; $ro = json_load(roster_path($client, $emp), []); if ($hire) $ro['hire'] = $hire; if ($ret) { $ro['status'] = 'retired'; $ro['retire'] = $ret; } $ro['updated_at'] = date('c'); $ro['updated_by'] = 'company-csv'; json_save(roster_path($client, $emp), $ro); $upd++; }
+            else { $n = 1; while (is_dir("$cdir/N" . sprintf('%03d', $n))) $n++; $emp = 'N' . sprintf('%03d', $n); emp_dir($client, $emp);
+                   json_save(roster_path($client, $emp), ['status' => $ret ? 'retired' : 'active', 'hire' => $hire, 'retire' => $ret, 'added_by' => 'company-csv', 'added_at' => date('c'), 'name' => $name, 'birth' => $birth]);
+                   $r = empty_record($client, $emp); $r['answers'] = ['name' => $name, 'kana' => trim((string)($c[$iKana] ?? '')), 'birth' => $birth, 'sex' => trim((string)($c[$iSex] ?? ''))]; save_record($r); $add++; }
+        }
+        $msg = "更新 $upd 人、追加 $add 人、読み飛ばし $skip 行";
+    }
+}
 // 一覧
 $rows = [];
 foreach (glob("$cdir/*", GLOB_ONLYDIR) ?: [] as $ed) {
@@ -99,6 +124,10 @@ document.addEventListener('DOMContentLoaded',()=>{ document.querySelectorAll('in
 <button>保存</button></form></div>
 <?php endforeach; ?>
 </div>
+<div class="card"><h2>人数が多い場合：CSVでまとめて更新</h2>
+<form method="post" enctype="multipart/form-data"><?= csrf_field() ?><input type="hidden" name="act" value="bulk"><input type="hidden" name="c" value="<?= $client ?>"><input type="hidden" name="k" value="<?= $h($key) ?>">
+<input type="file" name="csv" accept=".csv,.CSV" required>　<button>読み込む</button>
+<p class="note">Excelで作った表をCSVで保存して上げてください。1行目は見出し：<b>氏名、生年月日</b>（必須）、入社日、退職日、フリガナ、性別（任意）。氏名と生年月日が同じ人は更新、いない人は追加します。社員番号は不要です（事務所側で決めます）。</p></form></div>
 <div class="card"><h2>一覧にない従業員を追加する</h2>
 <form method="post"><?= csrf_field() ?><input type="hidden" name="act" value="add"><input type="hidden" name="c" value="<?= $client ?>"><input type="hidden" name="k" value="<?= $h($key) ?>">
 <div class="row"><label>氏名<br><input type="text" name="name" placeholder="山田 太郎" required></label><label>フリガナ<br><input type="text" name="kana" placeholder="ヤマダ タロウ"></label></div>
