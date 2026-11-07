@@ -1,0 +1,5 @@
+# 設定ファイルと lib をブラウザから見えなくする
+<FilesMatch "^(config\.php|config\.sample\.php)$">
+  Require all denied
+</FilesMatch>
+RedirectMatch 403 ^/.*/lib/.*$
