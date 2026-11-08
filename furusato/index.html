@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="robots" content="noindex">
 <title>ふるさと納税 限度額の目安</title>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-8XM6JR3HWP"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-8XM6JR3HWP');</script>
 <style>
 :root{--c:#00A88E;--cd:#007A67;--cl:#E3F4F0;--red:#C8372D;--g:#666;--bg:#f4f6f5}
 *{box-sizing:border-box}
@@ -63,6 +65,7 @@ details summary{cursor:pointer;color:var(--cd);font-weight:700;font-size:14px;ma
 <script src="calc.js"></script>
 <script>
 const $=s=>document.querySelector(s);
+const track=(name,params)=>{ try{ if(typeof gtag==='function') gtag('event',name,params||{}); }catch(e){} };
 const fmt=n=>(n==null||isNaN(n))?'—':Math.round(n).toLocaleString('ja-JP');
 const yen=n=>fmt(n)+'円';
 const toNum=v=>{const n=parseFloat(String(v??'').replace(/[^\d.\-]/g,''));return isNaN(n)?0:n};
@@ -115,7 +118,7 @@ function calcInput(){ const i={year:S.year, salary:S.salary, pension:S.pension, 
 // ---------- 画面 ----------
 function buildSteps(){
   const s=[];
-  s.push({id:'mode', t:'どちらですか', html:()=>big('mode',[['salary','給与をもらっている','会社員・パート・役員など'],['biz','事業をしている','個人事業主・フリーランス']],S.mode), next:()=>{const v=pick('mode'); if(!v) throw new Error('どちらかを選んでください'); if(S.mode!==v){S.mode=v;} }, nextLabel:'始める'});
+  s.push({id:'mode', t:'どちらですか', html:()=>big('mode',[['salary','給与をもらっている','会社員・パート・役員など'],['biz','事業をしている','個人事業主・フリーランス']],S.mode), next:()=>{const v=pick('mode'); if(!v) throw new Error('どちらかを選んでください'); if(S.mode!==v){S.mode=v;} track('sim_start',{mode:v}); }, nextLabel:'始める'});
   if(!S.mode) return s;
   if(S.mode==='salary'){
     s.push({id:'salary', t:'今年の年収', html:()=>`<p>給与・賞与の<b>税込の総支給額</b>（1〜12月の見込み）</p>${yenInput('salary',S.salary,'例：3,500,000')}
@@ -219,7 +222,7 @@ function resultHtml(){
     <div class="card" id="consult"><h2 style="margin-top:0">このシミュレーションが外れやすい人</h2><ul style="margin:4px 0 8px 18px;padding:0;font-size:14px">${(S.mode==='biz'?['今年、車・機械・内装など固定資産を買った','食品など軽減税率8%の売上・仕入がある','インボイスのない免税事業者への支払いが多い','年末に売上や仕入が大きく動く','医療費控除・iDeCo・小規模企業共済を臨時で適用する']:['医療費控除・iDeCo・住宅ローン控除を今年から使う','副業・不動産・株の売却など給与以外の収入がある','年の途中で転職・退職した、賞与が大きく変わる','家族の収入が123万円の境目に近い']).map(x=>`<li>${x}</li>`).join('')}</ul>
       <div class="ok" style="font-size:14px"><b>ふるさと納税のシミュレーションを大きく間違えると、節税ではなく単なる寄附になることがあります。</b><br>${S.mode==='biz'?'また、簡易課税か本則課税かの選び方、固定資産を買う年の消費税、小規模企業共済の活用で、シミュレーション結果は変わります。':'また、医療費控除・住宅ローン控除・iDeCoの有無で、シミュレーション結果は変わります。'}</div>
       <p class="note">節税したつもりが損をしてしまう。そんな不安がある方は一度税理士にご相談ください。</p>
-      <a href="https://metis.tax/contact" class="b1" style="display:block;text-align:center;text-decoration:none;padding:14px;border-radius:12px">メーティス税理士法人に相談する</a></div>
+      <a href="https://metis.tax/contact" onclick="track('consult_click',{mode:S.mode})" class="b1" style="display:block;text-align:center;text-decoration:none;padding:14px;border-radius:12px">メーティス税理士法人に相談する</a></div>
     <div class="card"><details><summary>計算の内訳</summary><table class="kv">${rows.map(([k,v])=>`<tr><td>${k}</td><td>${typeof v==='number'?fmt(v):v}</td></tr>`).join('')}</table><p class="note">限度額 ＝ 所得割額×20% ÷（90%−所得税率×1.021）＋2,000円</p></details>
     <button class="b3 sm noprint" style="margin-top:8px" onclick="window.print()">印刷・保存</button>${S.fromNencho?'<a href="../" class="b3 sm" style="margin-left:8px;text-decoration:none;display:inline-block">年末調整に戻る</a>':''}</div>`;
 }
@@ -249,7 +252,8 @@ async function loadNencho(){ try{ const res=await fetch('api.php?a=nencho',{cred
   steps=buildSteps(); idx=steps.findIndex(s=>s.id==='result'); render(); }catch(e){ S=fresh(); steps=buildSteps(); idx=0; render(); } }
 
 // ---------- 描画 ----------
-function render(){ steps=buildSteps(); if(idx>=steps.length) idx=steps.length-1; const st=steps[idx];
+let trackedResult=false;
+function render(){ steps=buildSteps(); if(idx>=steps.length) idx=steps.length-1; const st=steps[idx]; if(st.last&&!trackedResult){ trackedResult=true; track('sim_result',{mode:S.mode,from_nencho:S.fromNencho?1:0}); } if(!st.last) trackedResult=false;
   $('#prog').innerHTML=steps.map((s,i)=>`<span class="${i<idx?'done':i===idx?'on':''}"></span>`).join('');
   $('#view').innerHTML=st.last?st.html():`<div class="card"><h1>${st.t}</h1>${st.html()}<div class="err" id="err"></div></div>`;
   document.querySelectorAll('.big button').forEach(b=>b.addEventListener('click',()=>{ b.parentElement.querySelectorAll('button').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); }));
