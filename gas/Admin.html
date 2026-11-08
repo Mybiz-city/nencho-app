@@ -1,0 +1,138 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><meta name="robots" content="noindex">
+<title>事務所画面 - <?= cfg.app_name ?></title>
+<style>
+body{font-family:"BIZ UDPGothic","Hiragino Sans",sans-serif;margin:0;background:#f4f6f5;color:#222;font-size:15px}
+header{background:#007A67;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}header a{color:#fff;cursor:pointer;text-decoration:underline}
+.wrap{max-width:1000px;margin:0 auto;padding:16px}
+.card{background:#fff;border-radius:10px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+h2{margin:0 0 10px;font-size:17px;color:#007A67}h3{font-size:15px;margin:14px 0 6px;color:#007A67}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{border-bottom:1px solid #eee;padding:7px 6px;text-align:left;vertical-align:top}th{background:#E3F4F0;font-weight:700}
+.st{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;background:#eee}.st.submitted{background:#00A88E;color:#fff}.st.in_progress{background:#FFF2CC}.st.r{background:#fdecea;color:#C8372D}
+input[type=text],input[type=password],input[type=tel],input[type=file],input[type=date],select,textarea{font-size:15px;padding:7px;border:1px solid #ccc;border-radius:6px}
+button,.btn{font-size:14px;padding:8px 14px;background:#00A88E;color:#fff;border:0;border-radius:8px;cursor:pointer;text-decoration:none;display:inline-block}.g{background:#888}.red{background:#C8372D}.sm{font-size:12px;padding:4px 8px}
+.msg{background:#FFF8E1;border-left:4px solid #F2B705;padding:8px 12px;margin-bottom:12px;font-size:14px;white-space:pre-wrap}
+.ph{max-width:260px;border:1px solid #ddd;border-radius:6px;margin:4px}
+.chg td{background:#FFF8E1}
+small{color:#666}
+#drop{border:2px dashed #00A88E;border-radius:10px;padding:22px;text-align:center;background:#E3F4F0;color:#007A67;font-weight:700;cursor:pointer}
+.spin{color:#888;padding:20px;text-align:center}
+a{color:#007A67}
+.busy{position:fixed;inset:0;background:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;z-index:9;font-weight:700}
+</style></head><body>
+<header><b id="hd"><?= cfg.app_name ?>　事務所画面</b><span id="hr"></span></header>
+<div class="wrap"><div id="msg" class="msg" style="display:none"></div><div id="view"><div class="spin">読み込み中…</div></div></div>
+<script>
+let T = sessionStorage.getItem('nencho_adm') || '';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = n => (Number(n)||0).toLocaleString('ja-JP');
+const api = (a, body) => new Promise((res, rej) => { google.script.run.withSuccessHandler(j => { if (!j || !j.ok) { rej(new Error((j&&j.error)||'エラー')); return; } if (j._t) { T = j._t; sessionStorage.setItem('nencho_adm', T); } res(j); }).withFailureHandler(e => rej(new Error('通信に失敗しました：' + (e&&e.message||e)))).api('admin.' + a, Object.assign({_t: T}, body || {})); });
+const toB64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });
+function msg(m){ const el=$('#msg'); if(!m){ el.style.display='none'; return; } el.textContent=m; el.style.display='block'; window.scrollTo(0,0); }
+function busy(on){ let b=$('#busy'); if(on){ if(!b){ b=document.createElement('div'); b.id='busy'; b.className='busy'; b.textContent=on===true?'処理中…':on; document.body.appendChild(b);} } else if(b) b.remove(); }
+function download(b64, name, mime){ const bin=atob(b64); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); const url=URL.createObjectURL(new Blob([u8],{type:mime||'application/octet-stream'})); const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },2000); }
+async function run(fn, okMsg){ busy(true); try{ const j=await fn(); msg(j.msg||okMsg||''); return j; }catch(e){ msg(e.message); throw e; } finally{ busy(false); } }
+const stName = {submitted:'提出済み', in_progress:'入力中', new:'未着手'};
+const dt = s => s ? new Date(s).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+let state = { year: null };
+
+// ---------- ログイン ----------
+async function loginView(){
+  const info = await api('login_info').catch(()=>({totp:true}));
+  $('#hr').innerHTML=''; $('#view').innerHTML = `<div class="card" style="max-width:380px;margin:40px auto"><h2>事務所画面</h2><input type="password" id="pw" placeholder="パスワード" style="width:100%;font-size:18px;box-sizing:border-box">${info.totp?'<input type="tel" id="otp" placeholder="認証アプリの6桁（またはバックアップコード）" inputmode="numeric" style="width:100%;font-size:18px;margin-top:8px;box-sizing:border-box">':''}<button id="lg" style="width:100%;font-size:18px;margin-top:10px">ログイン</button><p class="err" id="lerr" style="color:#C8372D"></p></div>`;
+  $('#lg').onclick = async()=>{ try{ await api('login',{pw:$('#pw').value, otp:$('#otp')?$('#otp').value:''}); home(); }catch(e){ $('#lerr').textContent=e.message; } };
+  $('#pw').onkeydown = e => { if(e.key==='Enter') $('#lg').click(); };
+}
+function headerLinks(){ $('#hr').innerHTML = `<small id="ver"></small>　<a onclick="home()">一覧</a>　<a onclick="updateApp()">アプリを更新</a>　<a onclick="logout()">ログアウト</a>`; }
+async function logout(){ try{ await api('logout'); }catch(e){} T=''; sessionStorage.removeItem('nencho_adm'); loginView(); }
+async function updateApp(){ if(!confirm('GitHubの最新版に更新します。よろしいですか？（1分ほどかかります）')) return; await run(()=>api('update')).catch(()=>{}); }
+
+// ---------- 一覧 ----------
+async function home(y){
+  headerLinks(); $('#view').innerHTML='<div class="spin">読み込み中…</div>';
+  let j; try{ j = await api('home',{y: y||state.year||''}); }catch(e){ if(/ログイン/.test(e.message)) return loginView(); msg(e.message); return; }
+  state.year = j.year; const ro = j.year !== j.cur_year; $('#ver').textContent = j.version ? '版: '+j.version : '';
+  const s = j.settings;
+  let h = `<div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><div><b>対象年：${j.year}年分</b>${ro?'　<span class="st">閲覧のみ</span>':''}　<small>切り替え：${j.years.map(yy=>`<a onclick="home(${yy})" style="${yy==j.year?'font-weight:700':''}">${yy}</a>`).join(' ')||'—'}</small></div>
+  <details id="settings"><summary style="cursor:pointer;color:#007A67">設定・取り込み（顧問先一覧、前年CSV、郵便番号辞書、追加、保管）</summary><div style="margin-top:10px">
+    <h3>1. 顧問先一覧の取り込み</h3>顧問先一覧のExcel（.xlsx）かCSV <input type="file" id="clist" accept=".xlsx,.csv,.CSV,.txt">　または貼り付け<br><textarea id="cpaste" rows="2" style="width:100%;margin-top:6px" placeholder="9999 サンプル株式会社"></textarea><br><button class="sm" onclick="clientsImport()">一覧を読み込む</button>　<small>登録済み：${j.clients_total} 件</small>
+    <h3>2. 前年CSVの取り込み（複数ファイル可）</h3><div id="drop">ここに日本ICSのCSVをドラッグ＆ドロップ（複数可）<br><small style="font-weight:400">またはクリックして選ぶ。落とすと、すぐ取り込みが始まります</small></div><input type="file" id="csvin" accept=".csv,.CSV" multiple style="display:none">　<small>顧問先コードはファイル名（KYCSV06 0101<u>9999</u>.CSV）から。違う場合だけ4桁：<input type="text" id="csvclient" size="6"></small><br><small>日本ICS：業務選択 → 表形式 → 給与マスター表形式処理 → ファイル作成（タイプ6）</small>
+    <h3>郵便番号 → 市区町村コード</h3><button class="g sm" onclick="run(()=>api('zipdict'))">日本郵便から辞書を取り込む（年1回）</button>　<small>${j.zipdict?'取込済み：'+esc(j.zipdict.updated_at.substr(0,10))+'（'+fmt(j.zipdict.count)+'件）':'未取込'}</small>
+    <h3>事務所画面の2段階認証</h3><p><small>${j.totp?'有効です（ログイン時に認証アプリの6桁が必要）。':'<b style="color:#C8372D">未設定です。</b>エディタで 初期設定() を実行すると秘密の文字列が出ます。'}<br>スマホを失くしたときの備え：バックアップコード（1回ずつ使える10文字のコード8個）。残り ${j.backup_left} 個。<button class="g sm" onclick="if(confirm('新しいコードを8個発行し、古いコードは無効になります。印刷して金庫などに保管してください。')) run(()=>api('backup_codes'))">バックアップコードを発行</button></small></p>
+    <h3>3. 前年データのない人を追加</h3>顧問先コード<input type="text" id="ae_c" size="6">　個人コード（日本ICSと同じ）<input type="text" id="ae_e" size="10" placeholder="**000021">　<button class="sm" onclick="run(()=>api('add_emp',{client:$('#ae_c').value, emp:$('#ae_e').value})).then(()=>home())">作る</button>
+    <h3>保管と削除</h3><p><small>データはドライブに <b>5年間</b> 保管し、それより古い年は削除する運用です。今年：${j.cur_year}年分。削除できる年：${j.years.filter(yy=>yy<=j.cur_year-5).join('、')||'なし'}</small></p>
+    ${j.years.filter(yy=>yy<=j.cur_year-5).length?`年<select id="purge_y">${j.years.filter(yy=>yy<=j.cur_year-5).map(yy=>`<option>${yy}</option>`).join('')}</select>　<button class="red sm" onclick="if(confirm('この年のデータをごみ箱に移します。よろしいですか？')) run(()=>api('purge',{year:$('#purge_y').value})).then(()=>home())">5年を過ぎた年を削除する</button>`:''}
+    <h3>アプリの設定</h3><div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;max-width:640px">
+      <small>対象年</small><input type="text" id="s_year" value="${s.year}" size="6">
+      <small>アプリ名</small><input type="text" id="s_app" value="${esc(s.app_name)}">
+      <small>提出期限の表示</small><input type="text" id="s_dl" value="${esc(s.deadline_text)}" placeholder="令和8年12月4日（金）">
+      <small>AI読み取りの鍵</small><input type="password" id="s_key" placeholder="${s.ai?'設定済み（変えるときだけ入力）':'未設定：sk-ant-… を貼る'}">
+      <small>AIのモデル</small><input type="text" id="s_model" value="${esc(s.model)}">
+      <small>LINE（LIFF ID）</small><input type="text" id="s_liff" value="${esc(s.liff_id)}" placeholder="任意">
+      <small>更新元（GitHub）</small><input type="text" id="s_gh" value="${esc(s.github_repo)}">
+      <small>事務所パスワード</small><input type="password" id="s_pw" placeholder="変えるときだけ（10文字以上）">
+    </div><button class="sm" style="margin-top:8px" onclick="saveSettings()">設定を保存</button>　<small>データの保存先：<a href="${esc(s.root_url)}" target="_blank">ドライブのフォルダを開く</a></small>
+    <h3>記録（今月のログイン・取込・出力）</h3><button class="g sm" onclick="auditView()">記録を見る</button><div id="audit"></div>
+  </div></details></div>`;
+  h += `<div class="card"><h2>顧問先の一覧（${j.year}年分）</h2>`;
+  if (!j.rows.length) h += '<p>この年のデータがありません。「設定・取り込み」から前年CSVを取り込んでください。</p>';
+  else { const tot={n:0,submitted:0,in_progress:0,new:0};
+    h += '<table><tr><th>コード</th><th>顧問先</th><th>人数</th><th>提出済み</th><th>入力中</th><th>未着手</th><th>退職</th><th>会社用ページ</th><th></th></tr>';
+    j.rows.forEach(r=>{ tot.n+=r.n; ['submitted','in_progress','new'].forEach(k=>tot[k]+=r.cnt[k]||0); const done=r.n>0&&r.cnt.submitted===r.n;
+      h += `<tr${done?' style="background:#E3F4F0"':''}><td>${r.client}</td><td><a onclick="client('${r.client}')"><b>${esc(r.name||'（名前未登録）')}</b></a></td><td>${r.n}</td><td>${r.cnt.submitted||''}</td><td>${r.cnt.in_progress||''}</td><td>${r.cnt.new||''}</td><td>${r.cnt.retired||''}</td><td>${r.key?'発行済み':'—'}</td><td><button class="sm" onclick="client('${r.client}')">開く</button></td></tr>`; });
+    h += `<tr style="font-weight:700"><td></td><td>合計</td><td>${tot.n}</td><td>${tot.submitted}</td><td>${tot.in_progress}</td><td>${tot.new}</td><td></td><td></td><td></td></tr></table><small>緑の行＝全員提出済み。顧問先名を押すと従業員の一覧に進みます。</small>`; }
+  h += '</div>';
+  $('#view').innerHTML = h;
+  // ドラッグ＆ドロップ
+  const d=$('#drop'), inp=$('#csvin'); d.onclick=()=>inp.click(); inp.onchange=()=>importCsv([...inp.files]);
+  ['dragenter','dragover'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault(); d.style.background='#c9ece4';}));
+  ['dragleave','drop'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault(); d.style.background='#E3F4F0';}));
+  d.addEventListener('drop',ev=>importCsv([...ev.dataTransfer.files]));
+  document.ondragover=ev=>ev.preventDefault(); document.ondrop=ev=>{ if(ev.target.closest('#drop')) return; ev.preventDefault(); const fs=[...ev.dataTransfer.files].filter(x=>/\.csv$/i.test(x.name)); if(fs.length){ $('#settings').open=true; importCsv(fs); } };
+}
+async function importCsv(files){ files=files.filter(x=>/\.csv$/i.test(x.name)); if(!files.length){ alert('CSVファイルを落としてください'); return; } busy(files.length+' 件を取り込んでいます…'); try{ const payload=[]; for(const f of files) payload.push({name:f.name, b64: await toB64(f)}); const j=await api('import_csv',{files:payload, client:$('#csvclient').value}); msg(j.msg); home(); }catch(e){ msg(e.message); } finally{ busy(false); } }
+async function clientsImport(){ const f=$('#clist').files[0]; const body={paste:$('#cpaste').value}; if(f){ body.b64=await toB64(f); body.name=f.name; } await run(()=>api('clients_import',body)).then(()=>home()).catch(()=>{}); }
+async function saveSettings(){ const b={year:$('#s_year').value, app_name:$('#s_app').value, deadline_text:$('#s_dl').value, anthropic_model:$('#s_model').value, liff_id:$('#s_liff').value||undefined, github_repo:$('#s_gh').value}; if($('#s_key').value) b.anthropic_api_key=$('#s_key').value; await run(()=>api('settings_set',b)).catch(()=>{}); if($('#s_pw').value) await run(()=>api('change_pw',{pw:$('#s_pw').value})).catch(()=>{}); home(); }
+async function auditView(){ const j=await api('audit_tail'); $('#audit').innerHTML='<pre style="font-size:12px;max-height:300px;overflow:auto;background:#f7f7f7;padding:8px">'+esc(j.lines.join('\n')||'まだ記録がありません')+'</pre>'; }
+
+// ---------- 顧問先 ----------
+async function client(cl){
+  $('#view').innerHTML='<div class="spin">読み込み中…</div>';
+  const j = await api('client',{client:cl, y:state.year}).catch(e=>{ msg(e.message); return null; }); if(!j) return;
+  const ro = j.year !== j.cur_year; const cnt={submitted:0,in_progress:0,new:0,retired:0}; j.rows.forEach(r=>{ if(r.roster==='retired') cnt.retired++; else cnt[r.status]=(cnt[r.status]||0)+1; });
+  let h = `<p><a onclick="home()">← 顧問先の一覧</a></p><div class="card"><h2>${j.client} ${esc(j.name)}　<small>${j.year}年分　提出 ${cnt.submitted} ／ 入力中 ${cnt.in_progress} ／ 未着手 ${cnt.new} ／ 退職 ${cnt.retired}</small></h2>
+  <p><button onclick="exportCsv('${j.client}',false,false)">提出済みをCSVで出す</button> <button class="g" onclick="exportCsv('${j.client}',true,false)">全員分を出す</button> <button class="g" onclick="photosZip('${j.client}')">写真をまとめて保存</button>　<small>CSVは年調項目の列だけを出します（給与実績・口座は含めない）。540列すべてが要る場合：<a onclick="exportCsv('${j.client}',false,true)">全列で出す</a></small></p>
+  <p><small>日本ICSの取込では「該当社員が存在しない場合は取り込みを行わない」の☑を外すと、新しい個人コードの人が新規社員として登録されます。</small></p>`;
+  if (!ro) h += `<p>${j.company?`<small>会社用ページ（${j.company.expires} まで有効）：<input type="text" readonly value="${esc(j.company.url)}" size="70" onclick="this.select()"></small> <button class="g sm" onclick="if(confirm('URLを作り直します。古いURLは使えなくなります')) run(()=>api('company_key',{client:'${j.client}'})).then(()=>client('${j.client}'))">作り直す</button>`:`<button class="g sm" onclick="run(()=>api('company_key',{client:'${j.client}'})).then(()=>client('${j.client}'))">会社用ページのURLを作る</button>`}</p>`;
+  h += `<table><tr><th>登録コード<br><small>（下はICSの個人コード）</small></th><th>氏名</th><th>初回番号</th><th>在籍</th><th>状態</th><th>最終更新</th><th>写真</th><th>注意</th><th>確認</th><th></th></tr>`;
+  j.rows.forEach(w=>{ h += `<tr><td>${w.pending?`<small>会社が追加</small><br><input type="text" id="nc_${esc(w.emp)}" size="9" value="${esc(j.next_code)}"><button class="sm" onclick="run(()=>api('assign_code',{client:'${j.client}',old:'${esc(w.emp)}',new:$('#nc_${esc(w.emp)}').value})).then(()=>client('${j.client}'))">この番号で割当</button>`:`<b>${j.client}${w.emp.replace(/\D/g,'')}</b><br><small>${esc(w.emp)}</small>`}</td><td>${esc(w.name)}</td><td>${w.pin?`<b style="letter-spacing:.1em">${w.pin_used?'<span style="color:#888">使用済み</span>':esc(w.pin)}</b>${w.device?'<br><small>スマホ登録済み</small>':''}`:'<small>未発行</small>'}<br><button class="g sm" style="font-size:11px;padding:2px 6px" onclick="if(confirm('初回番号を作り直します。今登録されているスマホからは入れなくなります')) run(()=>api('pin_reissue',{client:'${j.client}',emp:'${esc(w.emp)}'})).then(()=>client('${j.client}'))">再発行</button></td><td>${w.roster==='retired'?`<span class="st r">退職 ${esc(w.retire)}</span>`:'在籍'}${w.hire?`<br><small>入社 ${esc(w.hire)}</small>`:''}</td><td><span class="st ${w.status}">${stName[w.status]||w.status}</span></td><td>${dt(w.updated)}</td><td>${w.certs}枚</td><td>${w.unknown_income?'<small style="color:#C8372D">確定申告へ</small>':''}${w.otsu?'<small style="color:#C8372D">乙欄・年調しない</small>':''}</td><td>${w.checked?'✓':''}</td><td><a onclick="emp('${j.client}','${esc(w.emp)}')">開く</a></td></tr>`; });
+  h += '</table></div>';
+  $('#view').innerHTML=h;
+}
+async function exportCsv(cl, all, full){ await run(async()=>{ const j=await api('export',{client:cl, y:state.year, all, full}); download(j.b64, j.filename, 'text/csv'); return {msg:'CSVをダウンロードしました：'+j.filename}; }).catch(()=>{}); }
+async function photosZip(cl){ await run(async()=>{ const j=await api('photos_zip',{client:cl, y:state.year}); download(j.b64, j.filename, 'application/zip'); return {msg:'ZIPをダウンロードしました'}; }).catch(()=>{}); }
+
+// ---------- 従業員 ----------
+async function emp(cl, e){
+  $('#view').innerHTML='<div class="spin">読み込み中…</div>';
+  const j = await api('emp',{client:cl, emp:e, y:state.year}).catch(er=>{ msg(er.message); return null; }); if(!j) return;
+  const r=j.record, a=r.answers||{}, p=r.prev||{}, c=r.computed, t=r.totals;
+  const name = a.name || ((p.sei||'')+' '+(p.mei||''));
+  let h = `<p><a onclick="client('${cl}')">← ${cl} の一覧</a></p><div class="card"><h2>${cl}-${esc(e)}　${esc(name)}　<span class="st ${r.status}">${stName[r.status]||r.status}</span></h2>
+  <p><small>同意 ${esc(r.consent_at||'—')}　提出 ${esc(r.submitted_at||'—')}　スマホ登録 ${r.device_bound_at?'あり':'なし'}　初回番号 ${r.roster.pin?(r.roster.pin_used?'使用済み':esc(r.roster.pin)):'未発行'}</small></p>
+  <label><input type="checkbox" id="chk" ${r.office_checked_at?'checked':''}> 事務所で確認した</label>　<input type="text" id="note" value="${esc(r.office_note||'')}" placeholder="メモ" size="40">　<small>生年月日：${esc(a.birth||p.birth||'未登録')}　訂正：<input type="date" id="birth"></small>　<button class="sm" onclick="run(()=>api('note',{client:'${cl}',emp:'${esc(e)}',note:$('#note').value,birth:$('#birth').value,checked:$('#chk').checked})).then(()=>emp('${cl}','${esc(e)}'))">保存</button>
+  <p style="margin-top:8px"><button class="red sm" onclick="if(confirm('この人の今年の入力と写真をすべて消します。前年は残ります。よろしいですか？')) run(()=>api('reset_emp',{client:'${cl}',emp:'${esc(e)}'})).then(()=>emp('${cl}','${esc(e)}'))">今年の入力をリセット</button></p></div>`;
+  h += `<div class="card"><h2>本人が訂正した項目</h2>${(r.changes||[]).length?'<ul>'+r.changes.map(ch=>`<li><small>${dt(ch.at)}</small> ${esc(ch.what)}</li>`).join('')+'</ul>':'<p><small>なし</small></p>'}</div>`;
+  h += `<div class="card"><h2>判定結果</h2><table><tr><th>本人の所得</th><td>${fmt(c.self.total_income)}円（給与 ${fmt(c.self.salary_revenue)}円）</td></tr>
+  <tr><th>配偶者</th><td>${c.spouse?esc((a.spouse||{}).name||'')+'　区分 '+c.spouse.kubun+'　源泉控除対象 '+c.spouse.gensen+'　所得 '+fmt(c.spouse.income.total_income)+'円':'なし'}</td></tr>
+  <tr><th>扶養親族</th><td>${(c.family||[]).map(f=>esc((f.name||'')+'（'+(f.relation||'')+'・'+(f.age??'?')+'歳）→ '+f.class+'　所得 '+fmt((f.income||{}).total_income||0)+'円')).join('<br>')}<br><b>${esc(r.dep_kubun)}</b></td></tr>
+  <tr><th>所得金額調整控除</th><td>${c.adjust?esc(c.adjust.kind):'—'}</td></tr>
+  <tr><th>保険料・掛金</th><td>${Object.entries({life_new:'新生命',life_old:'旧生命',kaigo:'介護医療',nenkin_new:'新個人年金',nenkin_old:'旧個人年金',jishin:'地震',old_songai:'旧長期',kokumin_nenkin:'国民年金',shaho_self:'社保（自払い計）',kyosai:'共済・iDeCo',zandaka1:'住宅残高'}).filter(([k])=>t[k]).map(([k,l])=>l+' '+fmt(t[k])+'円').join('　')}</td></tr></table>
+  ${(c.warnings||[]).map(w=>`<p class="msg">${esc(w)}</p>`).join('')}</div>`;
+  h += `<div class="card"><h2>証明書・写真</h2>${(r.certs||[]).filter(ct=>ct.status!=='deleted').map(ct=>`<div style="display:flex;gap:12px;border-bottom:1px solid #eee;padding:8px 0"><img class="ph" data-photo="${esc(ct.file)}" alt=""><div><b>${esc(ct.kind)} ${esc(ct.cat||'')}</b> ${esc(ct.issuer||'')} <span class="st">${esc(ct.status)}${ct.confirmed?'・本人確認済':''}</span><br>${(ct.items||[]).map(it=>esc((it.category||'')+' '+(it.contract||'')+' '+fmt(it.amount)+'円 '+(it.confidence||''))).join('<br>')}${ct.ai&&ct.ai.notes?'<br><small>AI: '+esc(ct.ai.notes)+'</small>':''}${ct.error?'<br><small style="color:#C8372D">'+esc(ct.error)+'</small>':''}</div></div>`).join('')||'<p><small>なし</small></p>'}</div>`;
+  h += `<div class="card"><h2>CSVに出る内容（空でない列のみ）</h2><table><tr><th>列</th><th>項目</th><th>前年</th><th>今年</th></tr>${r.diff.map(d=>`<tr class="${d.chg?'chg':''}"><td>${d.col}</td><td>${esc(d.name)}</td><td>${esc(d.prev)}</td><td>${esc(d.now)}</td></tr>`).join('')}</table></div>`;
+  $('#view').innerHTML=h;
+  document.querySelectorAll('img[data-photo]').forEach(async img=>{ try{ const k=await api('photo',{client:cl, emp:e, f:img.dataset.photo, y:state.year}); img.src=k.data; img.onclick=()=>{ const w=window.open(); w.document.write('<img src="'+k.data+'" style="max-width:100%">'); }; }catch(er){ img.alt='表示できません'; } });
+}
+(async()=>{ if (T) { try{ await home(); return; }catch(e){} } loginView(); })();
+</script></body></html>
