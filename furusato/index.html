@@ -219,7 +219,7 @@ function resultHtml(){
     <div class="card" id="consult"><h2 style="margin-top:0">このシミュレーションが外れやすい人</h2><ul style="margin:4px 0 8px 18px;padding:0;font-size:14px">${(S.mode==='biz'?['今年、車・機械・内装など固定資産を買った','食品など軽減税率8%の売上・仕入がある','インボイスのない免税事業者への支払いが多い','年末に売上や仕入が大きく動く','医療費控除・iDeCo・小規模企業共済を臨時で適用する']:['医療費控除・iDeCo・住宅ローン控除を今年から使う','副業・不動産・株の売却など給与以外の収入がある','年の途中で転職・退職した、賞与が大きく変わる','家族の収入が123万円の境目に近い']).map(x=>`<li>${x}</li>`).join('')}</ul>
       <div class="ok" style="font-size:14px"><b>ふるさと納税のシミュレーションを大きく間違えると、節税ではなく単なる寄附になることがあります。</b><br>${S.mode==='biz'?'また、簡易課税か本則課税かの選び方、固定資産を買う年の消費税、小規模企業共済の活用で、シミュレーション結果は変わります。':'また、医療費控除・住宅ローン控除・iDeCoの有無で、シミュレーション結果は変わります。'}</div>
       <p class="note">節税したつもりが損をしてしまう。そんな不安がある方は一度税理士にご相談ください。</p>
-      <a href="https://metis.tax/" class="b1" style="display:block;text-align:center;text-decoration:none;padding:14px;border-radius:12px">メーティス税理士法人に相談する</a></div>
+      <a href="https://metis.tax/contact" class="b1" style="display:block;text-align:center;text-decoration:none;padding:14px;border-radius:12px">メーティス税理士法人に相談する</a></div>
     <div class="card"><details><summary>計算の内訳</summary><table class="kv">${rows.map(([k,v])=>`<tr><td>${k}</td><td>${typeof v==='number'?fmt(v):v}</td></tr>`).join('')}</table><p class="note">限度額 ＝ 所得割額×20% ÷（90%−所得税率×1.021）＋2,000円</p></details>
     <button class="b3 sm noprint" style="margin-top:8px" onclick="window.print()">印刷・保存</button>${S.fromNencho?'<a href="../" class="b3 sm" style="margin-left:8px;text-decoration:none;display:inline-block">年末調整に戻る</a>':''}</div>`;
 }
