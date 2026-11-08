@@ -23,7 +23,7 @@ label{font-size:13px;color:#444}
 <header><b><?= ctx.name ?></b><br><small><?= ctx.year ?>年 年末調整　在籍者の確認</small></header>
 <div class="wrap"><div id="msg" class="msg" style="display:none"></div>
 <div class="card"><h2>お願い</h2><p style="margin:0;font-size:14px">今年の年末調整の対象者を確認してください。<b>今年中に退職した方</b>は「退職」にして退職日を、<b>今年入社した方</b>で一覧にない方は下の欄から追加してください。入社日・退職日は分かる範囲で結構です。</p>
-<p style="margin:8px 0 0;font-size:14px"><b>初回番号</b>は、従業員がスマホで初めて開くときに登録コードと一緒に入れる6桁です。本人にだけ渡してください（LINEで個別に送るか、紙で手渡し）。スマホを替えた方には「再発行」を押して新しい番号を渡してください。</p></div>
+<p style="margin:8px 0 0;font-size:14px"><b>初回番号</b>は、従業員がスマホで初めて開くときに登録コードと一緒に入れる6桁です。本人にだけ渡してください（LINEで個別に送るか、紙で手渡し）。スマホを替えた方や、番号が他人に知られた心配があるときは「再発行」を押して新しい番号を渡してください（前の番号と前のスマホは使えなくなります）。</p></div>
 <div class="card"><h2>従業員の一覧（<span id="cnt"></span>人）</h2><div id="list">読み込み中…</div></div>
 <div class="card"><h2>人数が多い場合：CSVでまとめて更新</h2><input type="file" id="bulk" accept=".csv,.CSV">　<button class="sm" onclick="bulk()">読み込む</button>
 <p class="note">Excelで作った表をCSVで保存して上げてください。1行目は見出し：<b>氏名、生年月日</b>（必須）、入社日、退職日、フリガナ、性別（任意）。氏名と生年月日が同じ人は更新、いない人は追加します。社員番号は不要です（事務所側で決めます）。</p></div>
@@ -50,7 +50,7 @@ function render(rows){
     <div class="row"><label>状態 <select id="st_${i}" onchange="document.getElementById('rt_${i}').style.display=this.value==='retired'?'inline-flex':'none'"><option value="active" ${w.status!=='retired'?'selected':''}>在籍</option><option value="retired" ${w.status==='retired'?'selected':''}>退職</option></select></label>
     <label>入社日 ${dsel('hi_'+i, w.hire, YEAR-50, YEAR)}</label><span style="display:${w.status==='retired'?'inline-flex':'none'}" id="rt_${i}"><label>退職日 ${dsel('rt2_'+i, w.retire, YEAR-3, YEAR)}</label></span>
     <button class="sm" onclick="saveRow(${i},'${esc(w.emp)}')">保存</button></div>
-    <div class="row note">${w.pending?'登録コード：事務所が発行後にお知らせします':`登録コード <b>${esc(w.code)}</b>　初回番号 ${w.pin?(w.pin_used?'<span class="st">使用済み</span>'+(w.device?'（スマホ登録済み）':''):'<span class="pin">'+esc(w.pin)+'</span>'):'<span class="st">未発行</span>'}`} <button class="g sm" onclick="if(confirm('${esc(w.name)} さんの初回番号を作り直します。今登録されているスマホからは入れなくなります。よろしいですか？')) reissue('${esc(w.emp)}')">再発行</button></div></div>`).join('');
+    <div class="row note">${w.pending?'登録コード：事務所が発行後にお知らせします':`登録コード <b>${esc(w.code)}</b>　初回番号 ${w.pin?'<span class="pin">'+esc(w.pin)+'</span>'+(w.pin_used?' <span class="st">スマホ登録 '+w.pin_used_count+'台</span>':''):'<span class="st">未発行</span>'}`} <button class="g sm" onclick="if(confirm('${esc(w.name)} さんの初回番号を作り直します。今登録されているスマホからは入れなくなります。よろしいですか？')) reissue('${esc(w.emp)}')">再発行</button></div></div>`).join('');
 }
 async function load(){ try{ const j=await api('list'); render(j.rows); }catch(e){ msg(e.message); } }
 async function saveRow(i,emp){ try{ const j=await api('roster',{emp, status:$('#st_'+i).value, hire:dval('hi_'+i), retire:dval('rt2_'+i)}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }

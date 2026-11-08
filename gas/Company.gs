@@ -10,7 +10,7 @@ function companyContext(c, k) {
 function companyNeed(p) { var ctx = companyContext(p.c, p.k); if (!ctx.ok) throw new Error(ctx.error); return ctx; }
 function companyRows(client) {
   var s = summaryLoad(client); var y = cfg().year;
-  return Object.keys(s).sort().map(function (k) { var e = s[k]; return { emp: e.emp, name: e.name, birth: e.birth, hire: e.hire, retire: e.retire, status: e.roster, app: e.status, pending: e.pending, code: client + codeDigits(e.emp), pin: e.pin, pin_used: e.pin_used, device: e.device }; });
+  return Object.keys(s).sort().map(function (k) { var e = s[k]; return { emp: e.emp, name: e.name, birth: e.birth, hire: e.hire, retire: e.retire, status: e.roster, app: e.status, pending: e.pending, code: client + codeDigits(e.emp), pin: e.pin, pin_used: e.pin_used, pin_used_count: e.pin_used_count || 0, device: e.device }; });
 }
 function companyApi(a, p) {
   var ctx = companyNeed(p); var client = ctx.client, year = cfg().year;

@@ -55,9 +55,8 @@ function empApi(a, p) {
       if (!ro2.pin) { // 初回番号が未発行（古い取り込み）：この場で発行して会社に出す形にする
         throw new Error('この登録コードには初回番号がまだありません。会社または事務所に「初回番号」を発行してもらってください');
       }
-      if (ro2.pin_used) { throttleFail(tk, 5); audit('pin reused ' + tk); throw new Error('この初回番号は使用済みです。別のスマホから入る場合は、会社または事務所に初回番号の再発行を頼んでください'); }
       if (!safeEq(ro2.pin, pin)) { throttleFail(tk, 5); throttleFail(tkc, 30); audit('pin mismatch ' + tk); throw new Error('初回番号が一致しません'); }
-      ro2.pin_used = true; ro2.pin_used_at = nowIso(); jsonSave(ed, 'roster.json', ro2);
+      ro2.pin_used = true; ro2.pin_used_at = nowIso(); ro2.pin_used_count = (ro2.pin_used_count || 0) + 1; jsonSave(ed, 'roster.json', ro2);
       throttleClear(tk); audit('login ok ' + pc.client + '-' + emp);
       var r3 = loadRecord(pc.client, emp);
       var dtok = deviceBind(pc.client, emp); r3.device_bound_at = nowIso();

@@ -248,7 +248,7 @@ function summaryRow(client, emp, ed) {
     updated: (r && (r.submitted_at || r.updated_at)) || '',
     certs: certs, checked: !!(r && r.office_checked_at),
     roster: ro.status || 'active', hire: ro.hire || '', retire: ro.retire || '',
-    pin: ro.pin || '', pin_used: !!ro.pin_used, device: !!(r && r.device_bound_at),
+    pin: ro.pin || '', pin_used: !!ro.pin_used, pin_used_count: ro.pin_used_count || 0, device: !!(r && r.device_bound_at),
     unknown_income: a.has_other_income === 'unknown', otsu: a.other_employer_decl === 'other',
     pending: /^N/.test(String((r && r.emp) || emp))
   };
