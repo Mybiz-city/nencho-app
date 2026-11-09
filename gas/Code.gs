@@ -4,10 +4,10 @@
 function doGet(e) {
   var p = (e && e.parameter) || {};
   var c = cfg();
-  var page = p.p === 'admin' ? 'Admin' : p.p === 'company' ? 'Company' : 'Emp';
+  var page = p.p === 'admin' ? 'AdminPage' : p.p === 'company' ? 'CompanyPage' : 'EmpPage';
   var t = HtmlService.createTemplateFromFile(page);
   t.cfg = c; t.q = p;
-  if (page === 'Company') { t.ctx = companyContext(p.c, p.k); }
+  if (page === 'CompanyPage') { t.ctx = companyContext(p.c, p.k); }
   var out = t.evaluate().setTitle(c.app_name).addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1');
   out.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); // LINEの中のブラウザでも開けるように
   return out;

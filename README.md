@@ -21,7 +21,7 @@
 1. work@metis.tax で https://script.google.com を開き、「新しいプロジェクト」
 2. 左の「ファイル」で、`gas/` の中の各ファイルを同じ名前で作り、中身を貼り付ける
    - `Code.gs` `Common.gs` `Judge.gs` `Ics.gs` `Emp.gs` `Admin.gs` `Company.gs` `Claude.gs` `Zip.gs` `Xlsx.gs` `Update.gs`（スクリプト）
-   - `Emp.html` `Admin.html` `Company.html`（HTML）
+   - `EmpPage.html` `AdminPage.html` `CompanyPage.html`（HTML）
    - `appsscript.json`（左の歯車「プロジェクトの設定」→「appsscript.json マニフェスト ファイルをエディタで表示する」にチェックを入れると出てくる）
 3. エディタ上部で関数 `初期設定` を選び「実行」→ 権限を許可 → 実行ログに、事務所パスワードと2段階認証の秘密の文字列が1回だけ出る。控える
 4. 右上「デプロイ」→「新しいデプロイ」→ 種類「ウェブアプリ」→ 実行ユーザー「自分」、アクセス「全員」→ デプロイ。出てきたURLがアプリのURL
