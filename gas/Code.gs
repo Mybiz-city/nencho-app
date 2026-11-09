@@ -45,8 +45,8 @@ function 初期設定() {
   } else out.push('2段階認証：設定済み');
   cfg._c = null;
   out.push('データの保存先： ' + rootFolder().getUrl());
-  out.push('従業員画面のURL： ' + ScriptApp.getService().getUrl());
-  out.push('事務所画面のURL： ' + ScriptApp.getService().getUrl() + '?p=admin');
+  out.push('従業員画面のURL： ' + appUrl());
+  out.push('事務所画面のURL： ' + appUrl() + '?p=admin');
   Logger.log(out.join('\n'));
   return out.join('\n');
 }

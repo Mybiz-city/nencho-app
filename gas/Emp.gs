@@ -79,7 +79,7 @@ function empApi(a, p) {
       if (p.change) r4.changes.push({ at: nowIso(), what: p.change });
       if (r4.status === 'submitted') r4.status = 'in_progress';
       r4.updated_at = nowIso();
-      saveRecord(r4);
+      saveRecord(r4, !!p.consent);
       return { ok: true, record: packRecord(r4) };
     }
     case 'upload': { // {kind, data(base64), mime}
@@ -142,7 +142,7 @@ function empApi(a, p) {
     case 'submit': {
       var w6 = need(); var r8 = loadRecord(w6.client, w6.emp);
       r8.status = 'submitted'; r8.submitted_at = nowIso(); r8.computed = compute(r8);
-      saveRecord(r8); jsonSave(empDir(w6.client, w6.emp, true), 'submitted.json', r8);
+      saveRecord(r8, true); jsonSave(empDir(w6.client, w6.emp, true), 'submitted.json', r8);
       audit('submit ' + w6.client + '-' + w6.emp);
       return { ok: true, record: packRecord(r8) };
     }

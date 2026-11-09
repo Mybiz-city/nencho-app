@@ -306,8 +306,13 @@ function loadRecord(client, emp) {
   }
   return r;
 }
-function saveRecord(r) {
+function saveRecord(r, force) {
   var ed = empDir(r.client, r.emp, true);
+  // 一覧用の集計は、状態が変わったときと3分に1回だけ書き直す（毎回だと保存が遅くなる）
+  var prevStatus = r._sum_status, need = force || r.status !== prevStatus || !r._sum_at || (Date.now() - new Date(r._sum_at).getTime() > 180000);
+  if (need) { r._sum_status = r.status; r._sum_at = nowIso(); }
   jsonSave(ed, 'answers.json', r);
-  summaryUpdate(r.client, r.emp);
+  if (need) summaryUpdate(r.client, r.emp);
 }
+/** 配備URL（Workspace の /a/ドメイン/ 付きは、ログインなしで開けないので外す） */
+function appUrl() { return String(ScriptApp.getService().getUrl() || '').replace(/\/a\/[^\/]+\//, '/'); }

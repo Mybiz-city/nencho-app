@@ -35,7 +35,7 @@ function adminApi(a, p) {
         rows.push({ client: cl, name: names[cl] || '', n: n, cnt: cnt, key: !!(keys[cl] && keys[cl].key) });
       });
       return { ok: true, year: y, cur_year: c.year, years: Object.keys(years).sort().reverse(), rows: rows, clients_total: Object.keys(names).length,
-        zipdict: zipDictMeta(), totp: !!c.admin_totp_secret, backup_left: jsonLoad(rootFolder(), '_backup_codes.json', []).length, version: c.version, url: ScriptApp.getService().getUrl(),
+        zipdict: zipDictMeta(), totp: !!c.admin_totp_secret, backup_left: jsonLoad(rootFolder(), '_backup_codes.json', []).length, version: c.version, url: appUrl(),
         settings: { year: c.year, app_name: c.app_name, deadline_text: c.deadline_text, ai: !!c.anthropic_api_key, model: c.anthropic_model, liff_id: c.liff_id, github_repo: c.github_repo, root_url: rootFolder().getUrl() } };
     }
     case 'client': {
@@ -43,7 +43,7 @@ function adminApi(a, p) {
       var list = Object.keys(s2).sort().map(function (k) { return s2[k]; });
       var kk = keys2[cl2] || null;
       return { ok: true, client: cl2, name: names2[cl2] || '', year: y2, cur_year: c.year, rows: list, next_code: nextEmpCode(cl2),
-        company: kk ? { url: ScriptApp.getService().getUrl() + '?p=company&c=' + cl2 + '&k=' + kk.key, issued_at: kk.issued_at, expires: addDays(kk.issued_at, 90) } : null };
+        company: kk ? { url: appUrl() + '?p=company&c=' + cl2 + '&k=' + kk.key, issued_at: kk.issued_at, expires: addDays(kk.issued_at, 90) } : null };
     }
     case 'emp': {
       var cl3 = four(p.client), y3 = yearOf(p), emp = String(p.emp || '');
