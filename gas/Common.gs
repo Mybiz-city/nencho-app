@@ -174,7 +174,7 @@ function totpVerify(secret, code) {
   for (var w = -1; w <= 1; w++) if (safeEq(totpCode(secret, now + w * 30), code)) return true;
   return false;
 }
-function totpNewSecret() { var al = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567', s = ''; for (var i = 0; i < 20; i++) s += al[Math.floor(Math.random() * 32)]; return s; }
+function totpNewSecret() { var al = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567', s = ''; for (var i = 0; i < 32; i++) s += al[Math.floor(Math.random() * 32)]; return s; } // 認証アプリは8の倍数の文字数しか受け付けない
 
 // ---------- 文字の小道具 ----------
 function zenToHanDigits(s) { return String(s || '').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }).replace(/[／－．]/g, function (c) { return { '／': '/', '－': '-', '．': '.' }[c]; }); }
