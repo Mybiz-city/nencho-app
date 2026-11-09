@@ -1,6 +1,9 @@
 import asyncio, json, hmac, hashlib, struct, time, base64, sys, urllib.request
 from playwright.async_api import async_playwright
-BASE='http://127.0.0.1:8090/exec'
+import os
+STATIC=os.environ.get('STATIC')
+BASE='http://127.0.0.1:8091/index.html' if STATIC else 'http://127.0.0.1:8090/exec'
+ADMIN='http://127.0.0.1:8091/admin.html' if STATIC else BASE+'?p=admin'
 OUT=sys.argv[1] if len(sys.argv)>1 else '/home/claude/manual/img/'
 def totp(secret):
     key=base64.b32decode(secret); c=int(time.time()//30); h=hmac.new(key,struct.pack('>Q',c),hashlib.sha1).digest(); o=h[19]&15
@@ -11,6 +14,7 @@ errors=[]
 async def main():
     pin=None
     # 事務所でログインして初回番号を取る
+    if STATIC: rpc('api','admin.login',{'pw':'test-pass-1234','otp':totp('JBSWY3DPEHPK3PXP')})
     adm=rpc('api','admin.login',{'pw':'test-pass-1234','otp':totp('JBSWY3DPEHPK3PXP')}); T=adm['_t']
     cl=rpc('api','admin.client',{'_t':T,'client':'9999'}); pin=[r for r in cl['rows'] if r['emp']=='**000001'][0]['pin']; print('pin',pin)
     async with async_playwright() as p:
@@ -41,7 +45,7 @@ async def main():
         # 事務所画面（PC幅）
         ad=await b.new_page(viewport={'width':1100,'height':800})
         ad.on('pageerror', lambda e: errors.append('admin:'+str(e)))
-        await ad.goto(BASE+'?p=admin'); await ad.wait_for_selector('#pw'); await ad.fill('#pw','test-pass-1234'); await ad.fill('#otp', totp('JBSWY3DPEHPK3PXP')); await ad.click('#lg'); await ad.wait_for_selector('table'); await ad.screenshot(path=OUT+'a1_home.png')
+        await ad.goto(ADMIN); await ad.wait_for_selector('#pw'); await ad.fill('#pw','test-pass-1234'); await ad.fill('#otp', totp('JBSWY3DPEHPK3PXP')); await ad.click('#lg'); await ad.wait_for_selector('table'); await ad.screenshot(path=OUT+'a1_home.png')
         await ad.click('text=設定・取り込み'); await ad.wait_for_timeout(300); await ad.screenshot(path=OUT+'a2_settings.png', full_page=True)
         await ad.click('text=サンプル株式会社'); await ad.wait_for_selector('text=提出済みをCSVで出す');
         if await ad.query_selector('text=会社用ページのURLを作る'): await ad.click('text=会社用ページのURLを作る'); await ad.wait_for_timeout(600)
@@ -53,7 +57,7 @@ async def main():
         async with ad.expect_download() as dl: await ad.click('text=全員分を出す')
         d=await dl.value; path=await d.path(); print('download', d.suggested_filename, open(path,'rb').read()[:60])
         # 会社用ページ
-        cl2=rpc('api','admin.client',{'_t':T,'client':'9999'}); curl=cl2['company']['url'].replace('http://127.0.0.1:8090/exec', BASE)
+        cl2=rpc('api','admin.client',{'_t':T,'client':'9999'}); curl=cl2['company']['url']
         co=await b.new_page(viewport={'width':600,'height':900}); co.on('pageerror', lambda e: errors.append('company:'+str(e)))
         await co.goto(curl); await co.wait_for_selector('.it'); await co.wait_for_timeout(400); await co.screenshot(path=OUT+'c1_company.png')
         await b.close()

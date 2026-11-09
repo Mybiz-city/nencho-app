@@ -35,15 +35,15 @@ function adminApi(a, p) {
         rows.push({ client: cl, name: names[cl] || '', n: hc.n, cnt: hc.cnt, key: !!(keys[cl] && keys[cl].key) });
       });
       return { ok: true, year: y, cur_year: c.year, years: Object.keys(years).sort().reverse(), rows: rows, clients_total: Object.keys(names).length,
-        zipdict: zipDictMeta(), totp: !!c.admin_totp_secret, backup_left: jsonLoad(rootFolder(), '_backup_codes.json', []).length, version: c.version, url: appUrl(),
-        settings: { year: c.year, app_name: c.app_name, deadline_text: c.deadline_text, ai: !!c.anthropic_api_key, model: c.anthropic_model, liff_id: c.liff_id, github_repo: c.github_repo, root_url: rootFolder().getUrl() } };
+        zipdict: zipDictMeta(), totp: !!c.admin_totp_secret, backup_left: jsonLoad(rootFolder(), '_backup_codes.json', []).length, version: c.version, url: pageUrl('emp'), admin_url: pageUrl('admin'),
+        settings: { year: c.year, pages_url: c.pages_url, app_name: c.app_name, deadline_text: c.deadline_text, ai: !!c.anthropic_api_key, model: c.anthropic_model, liff_id: c.liff_id, github_repo: c.github_repo, root_url: rootFolder().getUrl() } };
     }
     case 'client': {
       var cl2 = four(p.client), y2 = yearOf(p); var s2 = summaryLoad(cl2, y2), names2 = clientsLoad(), keys2 = jsonLoad(rootFolder(), '_company_keys.json', {});
       var list = Object.keys(s2).sort().map(function (k) { return s2[k]; });
       var kk = keys2[cl2] || null;
       return { ok: true, client: cl2, name: names2[cl2] || '', year: y2, cur_year: c.year, rows: list, next_code: nextEmpCode(cl2),
-        company: kk ? { url: appUrl() + '?p=company&c=' + cl2 + '&k=' + kk.key, issued_at: kk.issued_at, expires: addDays(kk.issued_at, 90) } : null };
+        company: kk ? { url: pageUrl('company', 'c=' + cl2 + '&k=' + kk.key), issued_at: kk.issued_at, expires: addDays(kk.issued_at, 90) } : null };
     }
     case 'emp': {
       var cl3 = four(p.client), y3 = yearOf(p), emp = String(p.emp || '');
@@ -152,9 +152,10 @@ function adminApi(a, p) {
       return { ok: true, lines: ls.slice(-150).reverse() };
     }
     case 'settings_set': {
-      var allowed = { year: 'YEAR', app_name: 'APP_NAME', deadline_text: 'DEADLINE_TEXT', anthropic_api_key: 'ANTHROPIC_API_KEY', anthropic_model: 'ANTHROPIC_MODEL', liff_id: 'LIFF_ID', github_repo: 'GITHUB_REPO' };
+      var allowed = { year: 'YEAR', pages_url: 'PAGES_URL', app_name: 'APP_NAME', deadline_text: 'DEADLINE_TEXT', anthropic_api_key: 'ANTHROPIC_API_KEY', anthropic_model: 'ANTHROPIC_MODEL', liff_id: 'LIFF_ID', github_repo: 'GITHUB_REPO' };
       for (var k2 in allowed) if (p[k2] !== undefined && String(p[k2]) !== '') setProp(allowed[k2], String(p[k2]).trim());
       if (p.anthropic_api_key === '__clear__') setProp('ANTHROPIC_API_KEY', '');
+      if (p.pages_url !== undefined && String(p.pages_url).trim() === '') setProp('PAGES_URL', '');
       audit('settings changed'); return { ok: true, msg: '設定を保存しました' };
     }
     case 'change_pw': {

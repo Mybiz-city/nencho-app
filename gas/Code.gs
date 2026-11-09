@@ -12,6 +12,15 @@ function doGet(e) {
   out.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); // LINEの中のブラウザでも開けるように
   return out;
 }
+/** 外に置いた画面（GitHub Pages など）からの呼び出し口。本文は JSON {action, payload} */
+function doPost(e) {
+  var out;
+  try {
+    var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    out = { result: api(body.action, body.payload || {}) };
+  } catch (err) { out = { error: String(err && err.message || err) }; }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
 function include(name) { return HtmlService.createHtmlOutputFromFile(name).getContent(); }
 
 /** 画面からの呼び出し口。例外は {ok:false,error} で返す */
@@ -45,8 +54,8 @@ function 初期設定() {
   } else out.push('2段階認証：設定済み');
   cfg._c = null;
   out.push('データの保存先： ' + rootFolder().getUrl());
-  out.push('従業員画面のURL： ' + appUrl());
-  out.push('事務所画面のURL： ' + appUrl() + '?p=admin');
+  out.push('従業員画面のURL： ' + pageUrl('emp'));
+  out.push('事務所画面のURL： ' + pageUrl('admin'));
   Logger.log(out.join('\n'));
   return out.join('\n');
 }

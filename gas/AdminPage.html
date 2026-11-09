@@ -64,6 +64,7 @@ async function home(y){
     ${j.years.filter(yy=>yy<=j.cur_year-5).length?`年<select id="purge_y">${j.years.filter(yy=>yy<=j.cur_year-5).map(yy=>`<option>${yy}</option>`).join('')}</select>　<button class="red sm" onclick="if(confirm('この年のデータをごみ箱に移します。よろしいですか？')) run(()=>api('purge',{year:$('#purge_y').value})).then(()=>home())">5年を過ぎた年を削除する</button>`:''}
     <h3>アプリの設定</h3><div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;max-width:640px">
       <small>対象年</small><input type="text" id="s_year" value="${s.year}" size="6">
+      <small>画面のURL（GitHub Pages）</small><input type="text" id="s_pages" value="${esc(s.pages_url||'')}" placeholder="空なら Google の画面を使う。例 https://mybiz-city.github.io/nencho-app/">
       <small>アプリ名</small><input type="text" id="s_app" value="${esc(s.app_name)}">
       <small>提出期限の表示</small><input type="text" id="s_dl" value="${esc(s.deadline_text)}" placeholder="令和8年12月4日（金）">
       <small>AI読み取りの鍵</small><input type="password" id="s_key" placeholder="${s.ai?'設定済み（変えるときだけ入力）':'未設定：sk-ant-… を貼る'}">
@@ -71,7 +72,7 @@ async function home(y){
       <small>LINE（LIFF ID）</small><input type="text" id="s_liff" value="${esc(s.liff_id)}" placeholder="任意">
       <small>更新元（GitHub）</small><input type="text" id="s_gh" value="${esc(s.github_repo)}">
       <small>事務所パスワード</small><input type="password" id="s_pw" placeholder="変えるときだけ（10文字以上）">
-    </div><button class="sm" style="margin-top:8px" onclick="saveSettings()">設定を保存</button>　<small>データの保存先：<a href="${esc(s.root_url)}" target="_blank">ドライブのフォルダを開く</a></small>
+    </div><button class="sm" style="margin-top:8px" onclick="saveSettings()">設定を保存</button>　<small>データの保存先：<a href="${esc(s.root_url)}" target="_blank">ドライブのフォルダを開く</a>　従業員画面のURL：<input type="text" readonly value="${esc(j.url)}" size="50" onclick="this.select()"></small>
     <h3>記録（今月のログイン・取込・出力）</h3><button class="g sm" onclick="auditView()">記録を見る</button><div id="audit"></div>
   </div></details></div>`;
   h += `<div class="card"><h2>顧問先の一覧（${j.year}年分）</h2>`;
@@ -92,7 +93,7 @@ async function home(y){
 }
 async function importCsv(files){ files=files.filter(x=>/\.csv$/i.test(x.name)); if(!files.length){ alert('CSVファイルを落としてください'); return; } busy(files.length+' 件を取り込んでいます…'); try{ const payload=[]; for(const f of files) payload.push({name:f.name, b64: await toB64(f)}); const j=await api('import_csv',{files:payload, client:$('#csvclient').value}); msg(j.msg); home(); }catch(e){ msg(e.message); } finally{ busy(false); } }
 async function clientsImport(){ const f=$('#clist').files[0]; const body={paste:$('#cpaste').value}; if(f){ body.b64=await toB64(f); body.name=f.name; } await run(()=>api('clients_import',body)).then(()=>home()).catch(()=>{}); }
-async function saveSettings(){ const b={year:$('#s_year').value, app_name:$('#s_app').value, deadline_text:$('#s_dl').value, anthropic_model:$('#s_model').value, liff_id:$('#s_liff').value||undefined, github_repo:$('#s_gh').value}; if($('#s_key').value) b.anthropic_api_key=$('#s_key').value; await run(()=>api('settings_set',b)).catch(()=>{}); if($('#s_pw').value) await run(()=>api('change_pw',{pw:$('#s_pw').value})).catch(()=>{}); home(); }
+async function saveSettings(){ const b={year:$('#s_year').value, pages_url:$('#s_pages').value, app_name:$('#s_app').value, deadline_text:$('#s_dl').value, anthropic_model:$('#s_model').value, liff_id:$('#s_liff').value||undefined, github_repo:$('#s_gh').value}; if($('#s_key').value) b.anthropic_api_key=$('#s_key').value; await run(()=>api('settings_set',b)).catch(()=>{}); if($('#s_pw').value) await run(()=>api('change_pw',{pw:$('#s_pw').value})).catch(()=>{}); home(); }
 async function auditView(){ const j=await api('audit_tail'); $('#audit').innerHTML='<pre style="font-size:12px;max-height:300px;overflow:auto;background:#f7f7f7;padding:8px">'+esc(j.lines.join('\n')||'まだ記録がありません')+'</pre>'; }
 
 // ---------- 顧問先 ----------

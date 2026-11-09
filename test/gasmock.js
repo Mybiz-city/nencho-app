@@ -61,7 +61,8 @@ function makeContext(opts) {
     createTemplateFromFile: (name) => { const t = { evaluate() { const code = compileTemplate(htmlFiles[name]); const keys = Object.keys(t).filter(k => k !== 'evaluate'); const fn = vm.runInContext('(function(__esc,' + keys.join(',') + '){' + code + '})', ctx); const html = fn((s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])), ...keys.map(k => t[k])); return { _html: html, setTitle() { return this; }, addMetaTag() { return this; }, setXFrameOptionsMode() { return this; }, getContent() { return html; } }; } }; return t; },
     createHtmlOutputFromFile: (name) => ({ getContent: () => htmlFiles[name] }) };
   const XmlService = null;
-  const ctx = vm.createContext({ DriveApp, PropertiesService, CacheService, LockService, Utilities, UrlFetchApp, ScriptApp, Logger, HtmlService, XmlService, console, Date, Math, JSON, Buffer });
+  const ContentService = { MimeType: { JSON: 'json' }, createTextOutput: (t) => ({ _t: t, setMimeType() { return this; }, getContent() { return this._t; } }) };
+  const ctx = vm.createContext({ ContentService, DriveApp, PropertiesService, CacheService, LockService, Utilities, UrlFetchApp, ScriptApp, Logger, HtmlService, XmlService, console, Date, Math, JSON, Buffer });
   const dir = path.join(__dirname, '..', 'gas');
   for (const f of fs.readdirSync(dir)) { if (f.endsWith('.gs')) vm.runInContext(fs.readFileSync(path.join(dir, f), 'utf8'), ctx, { filename: f }); if (f.endsWith('.html')) htmlFiles[f.replace(/\.html$/, '')] = fs.readFileSync(path.join(dir, f), 'utf8'); }
   ctx.__props = props; ctx.__nodes = nodes; ctx.__cache = cache;

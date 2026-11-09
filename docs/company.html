@@ -1,0 +1,73 @@
+<!DOCTYPE html><html lang="ja"><head><script src="config.js"></script>
+<script>
+// google.script.run の代わりに、Apps Script の doPost へ fetch で送る（Content-Type は text/plain にして事前確認なしで通す）
+window.google = { script: { run: (function () {
+  function mk(ok, ng) { return new Proxy({}, { get(_, name) {
+    if (name === 'withSuccessHandler') return h => mk(h, ng);
+    if (name === 'withFailureHandler') return h => mk(ok, h);
+    return (...args) => { fetch(window.NENCHO.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: args[0], payload: args[1] || {} }) })
+      .then(r => r.json()).then(j => { if (j.error) { ng && ng(new Error(j.error)); } else ok && ok(j.result); }).catch(e => ng && ng(e)); };
+  } }); }
+  return mk(null, null); })() } };
+</script><meta charset="UTF-8"><meta name="robots" content="noindex">
+<title>在籍者の確認</title>
+<style>
+body{font-family:"BIZ UDPGothic","Hiragino Sans",sans-serif;margin:0;background:#f4f6f5;color:#222;font-size:15px}
+header{background:#007A67;color:#fff;padding:12px 16px}header b{font-size:17px}
+.wrap{max-width:760px;margin:0 auto;padding:14px}
+.card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+h2{margin:0 0 8px;font-size:16px;color:#007A67}
+.it{border-bottom:1px solid #eee;padding:10px 0}.it:last-child{border:0}
+.it b{font-size:16px}.note{color:#666;font-size:13px}
+input[type=text],input[type=file],select{font-size:15px;padding:8px;border:1px solid #ccc;border-radius:8px}
+button{font-size:14px;padding:8px 14px;background:#00A88E;color:#fff;border:0;border-radius:8px;cursor:pointer}.g{background:#888}.sm{font-size:12px;padding:4px 8px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.st{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;background:#eee;margin-left:6px}.st.r{background:#fdecea;color:#C8372D}.st.g{background:#00A88E;color:#fff}
+.msg{background:#FFF8E1;border-left:4px solid #F2B705;padding:8px 12px;margin-bottom:12px;font-size:14px}
+label{font-size:13px;color:#444}
+.pin{font-family:monospace;font-size:18px;letter-spacing:.15em;background:#E3F4F0;padding:2px 8px;border-radius:6px}
+.dsel{display:inline-flex;gap:4px}.dsel select{padding:6px 4px}
+</style></head><body>
+
+<header><b id="ctxname">読み込み中…</b><br><small><span id="ctxyear"></span>年 年末調整　在籍者の確認</small></header>
+<div class="wrap"><div id="msg" class="msg" style="display:none"></div>
+<div class="card"><h2>お願い</h2><p style="margin:0;font-size:14px">今年の年末調整の対象者を確認してください。<b>今年中に退職した方</b>は「退職」にして退職日を、<b>今年入社した方</b>で一覧にない方は下の欄から追加してください。入社日・退職日は分かる範囲で結構です。</p>
+<p style="margin:8px 0 0;font-size:14px"><b>初回番号</b>は、従業員がスマホで初めて開くときに登録コードと一緒に入れる6桁です。本人にだけ渡してください（LINEで個別に送るか、紙で手渡し）。スマホを替えた方や、番号が他人に知られた心配があるときは「再発行」を押して新しい番号を渡してください（前の番号と前のスマホは使えなくなります）。</p></div>
+<div class="card"><h2>従業員の一覧（<span id="cnt"></span>人）</h2><div id="list">読み込み中…</div></div>
+<div class="card"><h2>人数が多い場合：CSVでまとめて更新</h2><input type="file" id="bulk" accept=".csv,.CSV">　<button class="sm" onclick="bulk()">読み込む</button>
+<p class="note">Excelで作った表をCSVで保存して上げてください。1行目は見出し：<b>氏名、生年月日</b>（必須）、入社日、退職日、フリガナ、性別（任意）。氏名と生年月日が同じ人は更新、いない人は追加します。社員番号は不要です（事務所側で決めます）。</p></div>
+<div class="card"><h2>一覧にない従業員を追加する</h2>
+<div class="row"><label>氏名<br><input type="text" id="a_name" placeholder="山田 太郎"></label><label>フリガナ<br><input type="text" id="a_kana" placeholder="ヤマダ タロウ"></label></div>
+<div class="row"><label>生年月日<br><span id="a_birth"></span></label><label>性別<br><select id="a_sex"><option value="">—</option><option>男</option><option>女</option></select></label><label>入社日<br><span id="a_hire"></span></label></div>
+<div class="row"><button onclick="add()">追加する</button></div><p class="note">追加した方の登録コードは、事務所が発行してお知らせします。</p></div>
+</div>
+<script>
+const _qs = new URLSearchParams(location.search); const CTX = { c: _qs.get('c') || '', k: _qs.get('k') || '' }, YEAR = window.NENCHO.year; document.getElementById('ctxyear').textContent = YEAR;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const api = (a, body) => new Promise((res, rej) => { google.script.run.withSuccessHandler(j => { if (!j || !j.ok) { rej(new Error((j&&j.error)||'エラー')); return; } res(j); }).withFailureHandler(e => rej(new Error('通信に失敗しました：' + (e&&e.message||e)))).api('company.' + a, Object.assign({}, CTX, body || {})); });
+const toB64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });
+function msg(m){ const el=$('#msg'); el.textContent=m; el.style.display=m?'block':'none'; window.scrollTo(0,0); }
+const eras=[['令',2019],['平',1989],['昭',1926],['大',1912],['明',1868]];
+function yl(y){ for(const [g,e] of eras){ if(y>=e){ const n=y-e+1; return y+'年（'+g+(n===1?'元':n)+'）'; } } return y+'年'; }
+function dsel(id,val,y0,y1){ const [y,m,d]=(val||'').split('-').map(Number); let h='<span class="dsel" id="'+id+'"><select class="y"><option value="">年</option>'; for(let i=y1;i>=y0;i--) h+='<option value="'+i+'"'+(i===y?' selected':'')+'>'+yl(i)+'</option>'; h+='</select><select class="m"><option value="">月</option>'; for(let i=1;i<=12;i++) h+='<option value="'+i+'"'+(i===m?' selected':'')+'>'+i+'月</option>'; h+='</select><select class="d"><option value="">日</option>'; for(let i=1;i<=31;i++) h+='<option value="'+i+'"'+(i===d?' selected':'')+'>'+i+'日</option>'; h+='</select></span>'; return h; }
+function dval(id){ const el=document.getElementById(id); const y=el.querySelector('.y').value,m=el.querySelector('.m').value,d=el.querySelector('.d').value; return (y&&m&&d)? y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0') : ''; }
+const appName={submitted:'入力済み',in_progress:'入力中',new:'未入力'};
+function render(rows){
+  $('#cnt').textContent=rows.length;
+  $('#list').innerHTML = rows.map((w,i)=>`<div class="it"><b>${esc(w.name)}</b> <span class="note">${w.birth?esc(w.birth.substr(0,4))+'年生まれ':''}</span>${w.status==='retired'?'<span class="st r">退職</span>':'<span class="st g">在籍</span>'}${w.pending?'<span class="st">コード発行待ち</span>':''}<span class="note" style="float:right">${appName[w.app]||''}</span>
+    <div class="row"><label>状態 <select id="st_${i}" onchange="document.getElementById('rt_${i}').style.display=this.value==='retired'?'inline-flex':'none'"><option value="active" ${w.status!=='retired'?'selected':''}>在籍</option><option value="retired" ${w.status==='retired'?'selected':''}>退職</option></select></label>
+    <label>入社日 ${dsel('hi_'+i, w.hire, YEAR-50, YEAR)}</label><span style="display:${w.status==='retired'?'inline-flex':'none'}" id="rt_${i}"><label>退職日 ${dsel('rt2_'+i, w.retire, YEAR-3, YEAR)}</label></span>
+    <button class="sm" onclick="saveRow(${i},'${esc(w.emp)}')">保存</button></div>
+    <div class="row note">${w.pending?'登録コード：事務所が発行後にお知らせします':`登録コード <b>${esc(w.code)}</b>　初回番号 ${w.pin?'<span class="pin">'+esc(w.pin)+'</span>'+(w.pin_used?' <span class="st">スマホ登録 '+w.pin_used_count+'台</span>':''):'<span class="st">未発行</span>'}`} <button class="g sm" onclick="if(confirm('${esc(w.name)} さんの初回番号を作り直します。今登録されているスマホからは入れなくなります。よろしいですか？')) reissue('${esc(w.emp)}')">再発行</button></div></div>`).join('');
+}
+async function load(){ try{ const j=await api('list'); document.getElementById('ctxname').textContent=j.ctx.name; document.title='在籍者の確認 - '+j.ctx.name; render(j.rows); }catch(e){ document.getElementById('ctxname').textContent='開けません'; document.querySelectorAll('.wrap .card').forEach(c=>c.style.display='none'); msg(e.message); } }
+async function saveRow(i,emp){ try{ const j=await api('roster',{emp, status:$('#st_'+i).value, hire:dval('hi_'+i), retire:dval('rt2_'+i)}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
+async function reissue(emp){ try{ const j=await api('pin_reissue',{emp}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
+async function add(){ try{ const j=await api('add',{name:$('#a_name').value, kana:$('#a_kana').value, birth:dval('ab'), sex:$('#a_sex').value, hire:dval('ah')}); msg(j.msg); render(j.rows); $('#a_name').value=''; $('#a_kana').value=''; }catch(e){ msg(e.message); } }
+async function bulk(){ const f=$('#bulk').files[0]; if(!f){ msg('CSVを選んでください'); return; } try{ const j=await api('bulk',{b64: await toB64(f)}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
+$('#a_birth').innerHTML=dsel('ab','',1930,YEAR); $('#a_hire').innerHTML=dsel('ah','',YEAR-3,YEAR);
+load();
+</script>
+
+</body></html>

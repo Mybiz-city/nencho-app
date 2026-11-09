@@ -29,6 +29,7 @@ function cfg() {
     github_branch: p.GITHUB_BRANCH || 'main',
     github_dir: p.GITHUB_DIR || 'gas',
     root_folder_id: p.ROOT_FOLDER_ID || '',
+    pages_url: p.PAGES_URL || '', // 画面を外（GitHub Pages）に置いたときの URL（末尾 / まで）
     version: p.VERSION || '',
     tax: TAX
   };
@@ -321,3 +322,10 @@ function saveRecord(r, force) {
 }
 /** 配備URL（Workspace の /a/ドメイン/ 付きは、ログインなしで開けないので外す） */
 function appUrl() { return String(ScriptApp.getService().getUrl() || '').replace(/\/a\/[^\/]+\//, '/'); }
+/** 従業員・会社・事務所の各画面のURL（外に置いた画面があればそちら） */
+function pageUrl(kind, query) {
+  var pu = cfg().pages_url;
+  if (pu) { if (pu.slice(-1) !== '/') pu += '/'; return pu + ({ emp: '', company: 'company.html', admin: 'admin.html' }[kind]) + (query ? '?' + query : ''); }
+  var q = ({ emp: '', company: 'p=company', admin: 'p=admin' }[kind]); if (query) q += (q ? '&' : '') + query;
+  return appUrl() + (q ? '?' + q : '');
+}

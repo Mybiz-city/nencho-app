@@ -11,6 +11,7 @@ const run = (code) => vm.runInContext(code, ctx);
 ctx.__csv = fs.readFileSync('/tmp/KYCSV0601019999.CSV').toString('base64');
 run('初期設定(); icsImport("9999", sjisToUtf8(__csv)); jsonSave(rootFolder(), "_clients.json", {"9999":"サンプル株式会社"});');
 // テスト用に事務所パスワードと認証を固定
+if (process.env.STATIC) run('setProp("PAGES_URL", "http://127.0.0.1:8091/")');
 run('setProp("ADMIN_PW_HASH", pwHash("test-pass-1234")); setProp("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP");');
 console.log('pins:', run('JSON.stringify(Object.values(summaryLoad("9999")).map(function(e){return e.emp+":"+e.pin}))'));
 const SHIM = `<script>window.google={script:{run:(function(){function mk(ok,ng){return new Proxy({},{get(_,name){ if(name==='withSuccessHandler') return h=>mk(h,ng); if(name==='withFailureHandler') return h=>mk(ok,h); return (...args)=>{ fetch('/rpc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fn:name,args})}).then(r=>r.json()).then(j=>{ if(j.error){ ng&&ng(new Error(j.error)); } else ok&&ok(j.result); }).catch(e=>ng&&ng(e)); }; }}); } return mk(null,null); })()}};</script>`;
@@ -18,6 +19,10 @@ http.createServer((req, res) => {
   const u = url.parse(req.url, true);
   if (req.method === 'POST' && u.pathname === '/rpc') {
     let body = ''; req.on('data', c => body += c); req.on('end', () => { try { const { fn, args } = JSON.parse(body); ctx.__args = args; const r = run('(function(){ return ' + fn + '.apply(null, __args); })()'); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ result: r })); } catch (e) { res.end(JSON.stringify({ error: String(e.message || e) })); } });
+    return;
+  }
+  if (req.method === 'POST' && u.pathname === '/post') { // 外の画面からの doPost を真似る（CORS付き）
+    let body = ''; req.on('data', c => body += c); req.on('end', () => { ctx.__body = body; const r = run('doPost({postData:{contents: __body}})'); res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Content-Type', 'application/json'); res.end(r.getContent()); });
     return;
   }
   if (u.pathname === '/exec' || u.pathname === '/') {
