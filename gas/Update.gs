@@ -13,7 +13,7 @@ function gasApi(method, path, body) {
   var code = res.getResponseCode(); var j = {}; try { j = JSON.parse(res.getContentText()); } catch (e) {}
   if (code >= 300) {
     var msg = (j.error && j.error.message) || res.getContentText().substr(0, 300);
-    if (code === 403 && /has not been used|is disabled|Apps Script API/i.test(msg)) msg = 'Apps Script API がオフです。https://script.google.com/home/usersettings で「オン」にしてから、もう一度押してください';
+    if (code === 403 && /has not been used|is disabled|Apps Script API/i.test(msg)) msg = 'Apps Script API がオフか、オンにした直後です。work@metis.tax でログインした状態で https://script.google.com/home/usersettings を確かめ、数分待ってから押し直してください。元の文：' + msg;
     throw new Error('Apps Script API エラー(' + code + '): ' + msg);
   }
   return j;

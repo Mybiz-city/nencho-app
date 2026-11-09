@@ -197,7 +197,9 @@ function icsExport(client, onlySubmitted, year, subset) {
     if (e.roster === 'retired') return;
     if (/^N/.test(String(e.emp))) return;
     if (onlySubmitted && e.status !== 'submitted') return;
-    var ed = pathFolder([client, String(year), k], false); var r = jsonLoad(ed, 'answers.json'); if (!r) return;
+    var ed = pathFolder([client, String(year), k], false); if (!ed) return;
+    var r = jsonLoad(ed, 'answers.json');
+    if (!r) { var prev = jsonLoad(ed, 'prev.json'); if (!prev) return; r = emptyRecord(client, e.emp); r.prev = prev; } // まだ開いていない人は前年の内容のまま出す
     lines.push(icsRowFromRecord(r));
   });
   if (subset) { var keep = icsNenchoColumns(); for (var n = 2; n < lines.length; n++) { var l = lines[n]; lines[n] = keep.map(function (i) { return l[i] === undefined ? '' : l[i]; }); } }
