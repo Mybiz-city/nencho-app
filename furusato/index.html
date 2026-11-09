@@ -79,8 +79,8 @@ const YEAR=new Date().getFullYear();
 // ---------- 状態 ----------
 let S; function fresh(){ return {mode:null, year:YEAR, name:'', salary:0, pension:0, over65:false, otherIncome:0, adjustApplies:false,
   kyuyo:null, kokuho:0, nenkin:0, shEtc:0, hasSpouse:null, spouseIncome:0, spouseOver70:false, dep:{ippan:0,tokutei:0,rojin:0,doukyo:0}, spr:[],
-  per:{shogai:0,tokubetsu:0,doukyoTokubetsu:0,kafu:0,hitorioya:0,gakusei:0}, life:{new:0,old:0,care:0,pnew:0,pold:0}, jishin:0, oldLong:0, kyosai:0, iryo:0, zasson:0, loanBalance:0, prevFurusato:0,
-  biz:{src:'manual', mode:'annual', ytdMethod:'annualize', sales:0, exp:0, month:Math.max(1,new Date().getMonth()), ytdSales:0, ytdExp:0, remainMonthly:null, cur:Array(12).fill(null), prev:Array(12).fill(null), curSales:Array(12).fill(null), elapsed:0, method:4, aoiro:650000, vat:{mode:'unknown',acc:'komi',minashi:0.7,est:'ratio',laborPct:null,depPct:null,out:0,inn:0,out13:0,inn13:0,paidBooked:'no',food:'no',foodSalesPct:null,foodBuyPct:null}, adj:0, suiiRead:false, shinkokuRead:false},
+  per:{shogai:0,tokubetsu:0,doukyoTokubetsu:0,kafu:0,hitorioya:0,gakusei:0}, life:{new:0,old:0,care:0,pnew:0,pold:0}, jishin:0, oldLong:0, kyosai:0, iryo:0, zasson:0, loanBalance:0,
+  biz:{src:'manual', mode:'annual', ytdMethod:'annualize', sales:0, exp:0, month:Math.max(1,new Date().getMonth()), ytdSales:0, ytdExp:0, remainMonthly:null, cur:Array(12).fill(null), prev:Array(12).fill(null), curSales:Array(12).fill(null), elapsed:0, method:4, aoiro:650000, vat:{mode:'unknown',acc:'komi',minashi:0.7,est:'ratio',laborPct:null,depPct:null,out:0,inn:0,out13:0,inn13:0,paidBooked:'no',food:'no',foodSalesPct:null,foodBuyPct:null}, adj:0, suiiRead:false, },
   safety:0.9}; }
 S=fresh(); let steps=[], idx=0;
 
@@ -139,11 +139,12 @@ function buildSteps(){
           <label>残りの月はどう見ますか</label>${big('ytdMethod',[['annualize','今までと同じ調子（12か月換算）'],['remain','残りの月の利益を自分で見込む']],b.ytdMethod)}
           <div id="m_remain" style="display:${b.ytdMethod==='remain'?'block':'none'}"><label>残りの月の利益（1か月あたり）</label>${yenInput('remainMonthly',b.remainMonthly,'今までの月平均')}</div></div>
         <label>青色申告特別控除</label><select id="aoiro">${aoiroOpts()}</select>
+        <details ${S.salary||S.pension?'open':''}><summary>給与や年金もある</summary><label>給与の年収（税込）</label>${yenInput('salary',S.salary)}<label>年金（年間）</label>${yenInput('pension',S.pension)}<div class="chk"><input type="checkbox" id="over65" ${S.over65?'checked':''}><span>65歳以上</span></div></details>
         <p class="note noprint" style="margin-top:14px"><a href="#" id="toPhoto" style="color:var(--cd);font-weight:700">試算表の画像を読み取る（代わりに写真で入れる）</a></p>`; },
       mount:()=>{ bindOcr(); const tp=$('#toPhoto'); if(tp) tp.onclick=e=>{e.preventDefault(); S.biz.src='photo'; render();}; const tm=$('#toManual'); if(tm) tm.onclick=e=>{e.preventDefault(); S.biz.src='manual'; render();};
         document.querySelectorAll('[data-k=bizmode]').forEach(x=>x.addEventListener('click',()=>{$('#m_annual').style.display=x.dataset.v==='annual'?'block':'none';$('#m_ytd').style.display=x.dataset.v==='ytd'?'block':'none';}));
         document.querySelectorAll('[data-k=ytdMethod]').forEach(x=>x.addEventListener('click',()=>{$('#m_remain').style.display=x.dataset.v==='remain'?'block':'none';})); },
-      next:()=>{ const b=S.biz; b.aoiro=+$('#aoiro').value; b.vat.acc=pick('amtTax')||'komi'; if(b.src==='photo'){ if(!b.suiiRead) throw new Error('推移損益を撮るか、「手入力に戻る」で入れてください'); return; }
+      next:()=>{ const b=S.biz; b.aoiro=+$('#aoiro').value; b.vat.acc=pick('amtTax')||'komi'; const se=$('#salary'); if(se){ S.salary=toNum(se.value); S.pension=toNum($('#pension').value); S.over65=$('#over65').checked; } if(b.src==='photo'){ if(!b.suiiRead) throw new Error('推移損益を撮るか、「手入力に戻る」で入れてください'); return; }
         b.mode=pick('bizmode'); if(!b.mode) throw new Error('どちらかを選んでください');
         if(b.mode==='annual'){ b.sales=toNum($('#sales').value); b.exp=toNum($('#exp').value); if(!b.sales) throw new Error('年間の売上を入れてください'); }
         else { b.month=+$('#month').value; b.ytdSales=toNum($('#ytdSales').value); b.ytdExp=toNum($('#ytdExp').value); b.ytdMethod=pick('ytdMethod')||'annualize'; const rm=toNum($('#remainMonthly').value); b.remainMonthly=rm||null; if(!b.ytdSales) throw new Error('売上の累計を入れてください'); } }});
@@ -174,11 +175,6 @@ function buildSteps(){
         const fsp=$('#foodSalesPct').value, fbp=$('#foodBuyPct').value; v.foodSalesPct=fsp===''?null:toNum(fsp); v.foodBuyPct=fbp===''?null:toNum(fbp);
         if(v.mode!=='menzei'&&v.mode!=='unknown'&&v.food==='yes'&&v.foodSalesPct==null&&v.foodBuyPct==null) throw new Error('食料品の割合を入れてください');
         if(v.mode!=='menzei'&&v.mode!=='unknown'&&!(v.acc==='komi'&&v.paidBooked==='yes')){ if(v.est==='actual'&&!v.out&&!v.out13) throw new Error('仮受消費税を入れてください'); if(v.est==='ratio'&&v.laborPct==null) throw new Error('人件費の割合を入れてください（従業員がいなければ 0）'); } }});
-    s.push({id:'shinkoku', t:'前年の確定申告書', html:()=>`<p>前年の<b>確定申告書（第一表・第二表）</b>を撮ってください。所得控除をそのまま使います。</p>
-      <label class="cam">📷 申告書を撮る（写真・PDF）<input type="file" accept="image/*,application/pdf" data-ocr="shinkoku" multiple></label>
-      ${S.biz.shinkokuRead?`<div class="ok">読み取りました：社会保険料 <b>${yen(S.kokuho+S.nenkin+S.shEtc+(S.kyuyo||0))}</b>、共済・iDeCo <b>${yen(S.kyosai)}</b>、生命保険料 <b>${yen(S.life.new+S.life.old+S.life.care+S.life.pnew+S.life.pold)}</b>${S.prevFurusato?`、前年の寄附 <b>${yen(S.prevFurusato)}</b>`:''}<br><span class="note">次の画面で直せます</span></div>`:'<p class="note">手元になければ、そのまま「次へ」。次の画面で入れます。</p>'}
-      <details><summary>給与や年金もある</summary><label>給与の年収</label>${yenInput('salary',S.salary)}<label>年金（年間）</label>${yenInput('pension',S.pension)}<div class="chk"><input type="checkbox" id="over65" ${S.over65?'checked':''}><span>65歳以上</span></div></details>`,
-      mount:()=>bindOcr(), next:()=>{ S.salary=toNum($('#salary').value); S.pension=toNum($('#pension').value); S.over65=$('#over65').checked; }});
   }
   // 共通：家族
   s.push({id:'family', t:'配偶者・家族', html:()=>`<p>配偶者はいますか。</p>${big('hasSpouse',[['no','いない'],['yes','いる']],S.hasSpouse)}
@@ -202,7 +198,7 @@ function buildSteps(){
     <div class="row"><div><label>個人年金（旧）</label>${yenInput('lpold',S.life.pold)}</div><div><label>地震保険</label>${yenInput('jishin',S.jishin)}</div></div>
     <div class="row"><div><label>iDeCo・小規模共済</label>${yenInput('kyosai',S.kyosai)}</div><div><label>旧長期損害</label>${yenInput('oldLong',S.oldLong)}</div></div>
     <details ${S.iryo||S.loanBalance||S.zasson?'open':''}><summary>医療費控除・住宅ローン・雑損もある</summary><label>医療費控除の額</label>${yenInput('iryo',S.iryo)}<label>住宅ローンの年末残高</label>${yenInput('loanBalance',S.loanBalance)}<label>雑損控除など</label>${yenInput('zasson',S.zasson)}</details>
-    <p class="note">不明なら去年と同じくらいで結構です。</p>`,
+    <p class="note">不明なら去年の確定申告書や控除証明書と同じくらいの額で結構です。</p>`,
     next:()=>{ if(S.mode==='salary'){ const k=toNum($('#kyuyo').value); S.kyuyo=(k===Math.round(S.salary*0.155))?null:k; } S.kokuho=toNum($('#kokuho').value); S.nenkin=toNum($('#nenkin').value); S.shEtc=toNum($('#shEtc').value);
       S.life={new:toNum($('#lnew').value),old:toNum($('#lold').value),care:toNum($('#lcare').value),pnew:toNum($('#lpnew').value),pold:toNum($('#lpold').value)}; S.jishin=toNum($('#jishin').value); S.oldLong=toNum($('#oldLong').value); S.kyosai=toNum($('#kyosai').value); S.iryo=toNum($('#iryo').value); S.loanBalance=toNum($('#loanBalance').value); S.zasson=toNum($('#zasson').value); }, nextLabel:'結果を見る'});
   s.push({id:'result', t:'限度額の目安', html:()=>resultHtml(), mount:()=>{ $('#safety').addEventListener('change',()=>{S.safety=+$('#safety').value; render();}); document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{ idx=steps.findIndex(x=>x.id===b.dataset.go); render(); }); }, last:true});
@@ -210,7 +206,7 @@ function buildSteps(){
 }
 function resultHtml(){
   const i=calcInput(); const r=FurusatoCalc.calcLimit(i); const f=S.mode==='biz'?bizForecast():null;
-  const w=[...r.warnings]; if(S.mode==='salary'&&S.kyuyo==null) w.push('社会保険料は年収×15.5%の概算です。'); if(f&&f.el&&f.el<12) w.push(`${f.label}。年末の受注や在庫で変わります。`); if(f&&f.unknownVat) w.push('<b>消費税の影響を入れていません。</b>簡易課税や税抜経理の方は結果が大きくズレることがあります。'); if(f&&f.simpleVat) w.push('消費税は経費の全部に消費税がかかるものとして概算しています。'); if(f&&f.foodWarn) w.push(`${S.year}年は食料品の税率が4月で変わります。1〜3月と4月以降を分けて入れると精度が上がります。`); if(f&&f.diff&&f.estimated) w.push(`消費税の精算分 ${yen(f.diff)} は${f.usesInn?'売上・経費と人件費の割合':'売上'}からの概算です。`); if(S.prevFurusato) w.push(`前年の寄附は ${yen(S.prevFurusato)} でした。`);
+  const w=[...r.warnings]; if(S.mode==='salary'&&S.kyuyo==null) w.push('社会保険料は年収×15.5%の概算です。'); if(f&&f.el&&f.el<12) w.push(`${f.label}。年末の受注や在庫で変わります。`); if(f&&f.unknownVat) w.push('<b>消費税の影響を入れていません。</b>簡易課税や税抜経理の方は結果が大きくズレることがあります。'); if(f&&f.simpleVat) w.push('消費税は経費の全部に消費税がかかるものとして概算しています。'); if(f&&f.foodWarn) w.push(`${S.year}年は食料品の税率が4月で変わります。1〜3月と4月以降を分けて入れると精度が上がります。`); if(f&&f.diff&&f.estimated) w.push(`消費税の精算分 ${yen(f.diff)} は${f.usesInn?'売上・経費と人件費の割合':'売上'}からの概算です。`);
   const rows=[]; if(f) rows.push(['事業所得の見込み（控除前）',f.pre],['青色申告特別控除',-f.aoiro]); if(S.salary) rows.push(['給与所得',r.salaryIncome]); if(S.pension||S.otherIncome) rows.push(['年金・その他の所得',r.pensionIncome+S.otherIncome]);
   rows.push(['合計所得金額',r.gokei],['所得控除（所得税／住民税）',fmt(r.ded)+' ／ '+fmt(r.dedJ)],['課税所得（住民税）',r.kazeiJ],['所得税の税率',(r.rate*100).toFixed(0)+'%'],['住民税 所得割額',r.shotokuwari],[r.capped?'特例分の上限（193万円で頭打ち）':'特例分の上限（20%）',r.tokurei]);
   if(f&&f.diff) rows.splice(1,0,['消費税の精算差益',f.diff]);
@@ -230,20 +226,10 @@ function resultHtml(){
 // ---------- 写真の読み取り ----------
 function wait(on,msg){ $('#wait').style.display=on?'flex':'none'; if(msg)$('#waitmsg').textContent=msg; }
 async function shrink(file){ if(!/^image\//.test(file.type)) return file; let bmp; try{ bmp=await createImageBitmap(file,{imageOrientation:'from-image'}); }catch(e){ return file; } const sc=Math.min(1,2000/Math.max(bmp.width,bmp.height)); if(sc===1&&file.size<1500000) return file; const cv=document.createElement('canvas'); cv.width=Math.round(bmp.width*sc); cv.height=Math.round(bmp.height*sc); cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height); return await new Promise(r=>cv.toBlob(b=>r(b||file),'image/jpeg',0.9)); }
-function bindOcr(){ document.querySelectorAll('[data-ocr]').forEach(inp=>inp.onchange=async()=>{ const kind=inp.dataset.ocr; for(const f0 of [...inp.files]){ wait(true, kind==='suii'?'推移損益を読み取っています':'申告書を読み取っています'); try{ const f=await shrink(f0); const fd=new FormData(); fd.append('file',f,f0.name||'photo.jpg'); fd.append('kind',kind); fd.append('year',S.year); const res=await fetch('ocr.php',{method:'POST',body:fd}); const j=await res.json(); if(!j.ok) throw new Error(j.error||'読み取れませんでした'); if(kind==='suii') applySuii(j.data); else applyShinkoku(j.data); }catch(e){ wait(false); alert(e.message); } } wait(false); inp.value=''; render(); }); }
+function bindOcr(){ document.querySelectorAll('[data-ocr]').forEach(inp=>inp.onchange=async()=>{ const kind=inp.dataset.ocr; for(const f0 of [...inp.files]){ wait(true,'推移損益を読み取っています'); try{ const f=await shrink(f0); const fd=new FormData(); fd.append('file',f,f0.name||'photo.jpg'); fd.append('kind',kind); fd.append('year',S.year); const res=await fetch('ocr.php',{method:'POST',body:fd}); const j=await res.json(); if(!j.ok) throw new Error(j.error||'読み取れませんでした'); applySuii(j.data); }catch(e){ wait(false); alert(e.message); } } wait(false); inp.value=''; render(); }); }
 function applySuii(d){ if(d.doc_type!=='suii') throw new Error('推移損益（推移試算表）ではないようです'); const y=d.year; let which; if(y==null||y===S.year) which='cur'; else if(y===S.year-1) which='prev'; else throw new Error(`令和${y-2018}年の表です。今年か前年の表を撮ってください`);
   const inc=d.income||[]; S.biz[which]=Array.from({length:12},(_,k)=>inc[k]==null?null:Math.round(inc[k])); if(which==='cur'&&d.sales) S.biz.curSales=Array.from({length:12},(_,k)=>d.sales[k]==null?null:Math.round(d.sales[k]));
   if(which==='cur'){ let lm=d.to_month; if(!lm){ for(let m=12;m>=1;m--) if(inc[m-1]!=null){lm=m;break} } S.biz.elapsed=lm||0; S.biz.suiiRead=true; S.biz.src='photo'; if(d.name&&!S.name)S.name=d.name; } }
-function applyShinkoku(d){ if(d.doc_type!=='shinkoku') throw new Error('確定申告書ではないようです'); const f=d.first||{}, s2=d.second||{}, pr=s2.premiums||{};
-  let kokuho=0,nenkin=0,kyuyo=0,etc=0; for(const it of (s2.shaho_items||[])){ const a=+it.amount||0,t=it.type||''; if(/国民健康保険|後期高齢|介護保険/.test(t))kokuho+=a; else if(/国民年金/.test(t))nenkin+=a; else if(/健康保険|厚生年金|雇用保険/.test(t))kyuyo+=a; else etc+=a; }
-  if(f.shaho!=null){ const rest=f.shaho-kokuho-nenkin-kyuyo-etc; if(kokuho+nenkin+kyuyo+etc===0) etc=f.shaho; else if(rest>0) etc+=rest; }
-  if(f.shaho!=null||kokuho+nenkin+kyuyo+etc>0){ S.kokuho=kokuho; S.nenkin=nenkin; S.shEtc=etc+kyuyo; }
-  if(f.kyosai!=null) S.kyosai=f.kyosai; if(Object.values(pr).some(v=>v!=null)) { S.life={new:+pr.new||0,old:+pr.old||0,care:+pr.care||0,pnew:+pr.pnew||0,pold:+pr.pold||0}; S.jishin=+pr.jishin||0; S.oldLong=+pr.long||0; }
-  if(f.iryo!=null) S.iryo=f.iryo; if(f.zasson!=null) S.zasson=f.zasson; if(s2.furusato!=null) S.prevFurusato=s2.furusato;
-  if(s2.spouse&&s2.spouse.name){ S.hasSpouse='yes'; S.spouseIncome=+s2.spouse.income||0; S.spouseRev=S.spouseIncome>0?S.spouseIncome+650000:0; if(s2.spouse.birth) S.spouseOver70=(S.year-parseInt(s2.spouse.birth.slice(0,4)))>=70; } else if(f.haigu!=null) S.hasSpouse=f.haigu>0?'yes':'no';
-  const deps=(s2.dependents||[]).filter(x=>x.birth); if(deps.length){ const c={ippan:0,tokutei:0,rojin:0,doukyo:0}; for(const x of deps){ const age=S.year-parseInt(x.birth.slice(0,4)); if(age<16)continue; if(age>=70){ if(/父|母/.test(x.relation||'')&&/同居/.test(x.note||'')) c.doukyo++; else c.rojin++; } else if(age>=19&&age<=22) c.tokutei++; else c.ippan++; } S.dep=c; }
-  const jin=(+f.kafu_hitorioya||0)+(+f.gakusei_shogai||0); if(jin&&!Object.values(S.per).some(x=>x)) S.per.shogai=Math.round(jin/270000);
-  if(d.name&&!S.name) S.name=d.name; S.biz.shinkokuRead=true; }
 
 // ---------- 描画 ----------
 let trackedResult=false;
