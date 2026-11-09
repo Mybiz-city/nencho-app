@@ -77,7 +77,7 @@ const pick=key=>{const b=document.querySelector(`[data-k=${key}].sel`);return b?
 const YEAR=new Date().getFullYear();
 
 // ---------- 状態 ----------
-let S; function fresh(){ return {mode:null, year:YEAR, name:'', salary:0, pension:0, over65:false, otherIncome:0, adjustApplies:false,
+let S; function fresh(){ return {mode:null, year:YEAR, salary:0, pension:0, over65:false, otherIncome:0, adjustApplies:false,
   kyuyo:null, kokuho:0, nenkin:0, shEtc:0, hasSpouse:null, spouseIncome:0, spouseOver70:false, dep:{ippan:0,tokutei:0,rojin:0,doukyo:0}, spr:[],
   per:{shogai:0,tokubetsu:0,doukyoTokubetsu:0,kafu:0,hitorioya:0,gakusei:0}, life:{new:0,old:0,care:0,pnew:0,pold:0}, jishin:0, oldLong:0, kyosai:0, iryo:0, zasson:0, loanBalance:0,
   biz:{src:'manual', mode:'annual', ytdMethod:'annualize', sales:0, exp:0, month:Math.max(1,new Date().getMonth()), ytdSales:0, ytdExp:0, remainMonthly:null, cur:Array(12).fill(null), prev:Array(12).fill(null), curSales:Array(12).fill(null), elapsed:0, method:4, aoiro:650000, vat:{mode:'unknown',acc:'komi',minashi:0.7,est:'ratio',laborPct:null,depPct:null,out:0,inn:0,out13:0,inn13:0,paidBooked:'no',food:'no',foodSalesPct:null,foodBuyPct:null}, adj:0, suiiRead:false, },
@@ -125,7 +125,7 @@ function buildSteps(){
       <details><summary>給与以外の収入もある</summary><label>年金（年間）</label>${yenInput('pension',S.pension)}<div class="chk"><input type="checkbox" id="over65" ${S.over65?'checked':''}><span>65歳以上</span></div><label>事業・不動産・副業の所得 <small>収入−経費</small></label>${yenInput('otherIncome',S.otherIncome)}</details>`,
       next:()=>{ S.salary=toNum($('#salary').value); if(!S.salary) throw new Error('年収を入れてください'); S.pension=toNum($('#pension').value); S.over65=$('#over65').checked; S.otherIncome=toNum($('#otherIncome').value); }});
   } else {
-    s.push({id:'biz', t:'今年の売上と経費', html:()=>{ const b=S.biz; if(b.src==='photo'){ const f=bizForecast(); return `<p>会計ソフトの<b>推移損益（推移試算表）</b>を撮ってください。6か月以上の実績があるもの。</p>
+    s.push({id:'biz', t:'今年の売上と経費', html:()=>{ const b=S.biz; if(b.src==='photo'){ const f=bizForecast(); return `<p>会計ソフトの<b>推移損益（推移試算表）</b>を撮ってください。6か月以上の実績があるもの。</p><p class="note">写真は数字を読むためにAI（Anthropic社）へ送り、当事務所のサーバーには保存しません。上部の氏名・屋号は指で隠して撮っても読めます。</p>
         <label class="cam">📷 今年の推移損益を撮る<input type="file" accept="image/*,application/pdf" data-ocr="suii"></label>
         ${b.suiiRead?`<div class="ok">1〜${f.el}月の所得 <b>${yen(f.cum)}</b><br>12か月換算 <b>${yen(f.m[4])}</b></div><label class="cam" style="padding:12px;font-size:15px">📷 前年の推移損益も撮る（任意）<input type="file" accept="image/*,application/pdf" data-ocr="suii"></label>`:''}
         <label>試算表の金額は</label><div class="row">${big('amtTax',[['komi','税込'],['nuki','税抜']],b.vat.acc).replace('class="big"','class="big" style="flex-direction:row;width:100%"')}</div>
@@ -229,7 +229,7 @@ async function shrink(file){ if(!/^image\//.test(file.type)) return file; let bm
 function bindOcr(){ document.querySelectorAll('[data-ocr]').forEach(inp=>inp.onchange=async()=>{ const kind=inp.dataset.ocr; for(const f0 of [...inp.files]){ wait(true,'推移損益を読み取っています'); try{ const f=await shrink(f0); const fd=new FormData(); fd.append('file',f,f0.name||'photo.jpg'); fd.append('kind',kind); fd.append('year',S.year); const res=await fetch('ocr.php',{method:'POST',body:fd}); const j=await res.json(); if(!j.ok) throw new Error(j.error||'読み取れませんでした'); applySuii(j.data); }catch(e){ wait(false); alert(e.message); } } wait(false); inp.value=''; render(); }); }
 function applySuii(d){ if(d.doc_type!=='suii') throw new Error('推移損益（推移試算表）ではないようです'); const y=d.year; let which; if(y==null||y===S.year) which='cur'; else if(y===S.year-1) which='prev'; else throw new Error(`令和${y-2018}年の表です。今年か前年の表を撮ってください`);
   const inc=d.income||[]; S.biz[which]=Array.from({length:12},(_,k)=>inc[k]==null?null:Math.round(inc[k])); if(which==='cur'&&d.sales) S.biz.curSales=Array.from({length:12},(_,k)=>d.sales[k]==null?null:Math.round(d.sales[k]));
-  if(which==='cur'){ let lm=d.to_month; if(!lm){ for(let m=12;m>=1;m--) if(inc[m-1]!=null){lm=m;break} } S.biz.elapsed=lm||0; S.biz.suiiRead=true; S.biz.src='photo'; if(d.name&&!S.name)S.name=d.name; } }
+  if(which==='cur'){ let lm=d.to_month; if(!lm){ for(let m=12;m>=1;m--) if(inc[m-1]!=null){lm=m;break} } S.biz.elapsed=lm||0; S.biz.suiiRead=true; S.biz.src='photo'; } }
 
 // ---------- 描画 ----------
 let trackedResult=false;
