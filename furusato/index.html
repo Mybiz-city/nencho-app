@@ -203,7 +203,7 @@ function resultHtml(){
       <p class="note">節税したつもりが損をしてしまう。そんな不安がある方は一度税理士にご相談ください。</p>
       <a href="https://metis.tax/contact" onclick="track('consult_click',{mode:S.mode})" class="b1" style="display:block;text-align:center;text-decoration:none;padding:14px;border-radius:12px">メーティス税理士法人に相談する</a></div>
     <div class="card"><details><summary>計算の内訳</summary><table class="kv">${rows.map(([k,v])=>`<tr><td>${k}</td><td>${typeof v==='number'?fmt(v):v}</td></tr>`).join('')}</table><p class="note">限度額 ＝ 所得割額×20% ÷（90%−所得税率×1.021）＋2,000円</p></details>
-    <button class="b3 sm noprint" style="margin-top:8px" onclick="window.print()">印刷・保存</button></div>`;
+    </div>`;
 }
 
 // ---------- 描画 ----------
