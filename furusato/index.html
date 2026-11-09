@@ -81,7 +81,7 @@ let S; function fresh(){ return {mode:null, year:YEAR, name:'', salary:0, pensio
   kyuyo:null, kokuho:0, nenkin:0, shEtc:0, hasSpouse:null, spouseIncome:0, spouseOver70:false, dep:{ippan:0,tokutei:0,rojin:0,doukyo:0}, spr:[],
   per:{shogai:0,tokubetsu:0,doukyoTokubetsu:0,kafu:0,hitorioya:0,gakusei:0}, life:{new:0,old:0,care:0,pnew:0,pold:0}, jishin:0, oldLong:0, kyosai:0, iryo:0, zasson:0, loanBalance:0, prevFurusato:0,
   biz:{src:'manual', mode:'annual', ytdMethod:'annualize', sales:0, exp:0, month:Math.max(1,new Date().getMonth()), ytdSales:0, ytdExp:0, remainMonthly:null, cur:Array(12).fill(null), prev:Array(12).fill(null), curSales:Array(12).fill(null), elapsed:0, method:4, aoiro:650000, vat:{mode:'unknown',acc:'komi',minashi:0.7,est:'ratio',laborPct:null,depPct:null,out:0,inn:0,out13:0,inn13:0,paidBooked:'no',food:'no',foodSalesPct:null,foodBuyPct:null}, adj:0, suiiRead:false, shinkokuRead:false},
-  fromNencho:false, certsRead:true, safety:0.9}; }
+  safety:0.9}; }
 S=fresh(); let steps=[], idx=0;
 
 // ---------- 事業所得の見込み ----------
@@ -210,7 +210,7 @@ function buildSteps(){
 }
 function resultHtml(){
   const i=calcInput(); const r=FurusatoCalc.calcLimit(i); const f=S.mode==='biz'?bizForecast():null;
-  const w=[...r.warnings]; if(S.mode==='salary'&&S.kyuyo==null) w.push('社会保険料は年収×15.5%の概算です。'); if(S.fromNencho&&!S.certsRead) w.push('保険料の証明書はまだ読み取られていません。去年と同じくらいの額を入れると近づきます。'); if(f&&f.el&&f.el<12) w.push(`${f.label}。年末の受注や在庫で変わります。`); if(f&&f.unknownVat) w.push('<b>消費税の影響を入れていません。</b>簡易課税や税抜経理の方は結果が大きくズレることがあります。'); if(f&&f.simpleVat) w.push('消費税は経費の全部に消費税がかかるものとして概算しています。'); if(f&&f.foodWarn) w.push(`${S.year}年は食料品の税率が4月で変わります。1〜3月と4月以降を分けて入れると精度が上がります。`); if(f&&f.diff&&f.estimated) w.push(`消費税の精算分 ${yen(f.diff)} は${f.usesInn?'売上・経費と人件費の割合':'売上'}からの概算です。`); if(S.prevFurusato) w.push(`前年の寄附は ${yen(S.prevFurusato)} でした。`);
+  const w=[...r.warnings]; if(S.mode==='salary'&&S.kyuyo==null) w.push('社会保険料は年収×15.5%の概算です。'); if(f&&f.el&&f.el<12) w.push(`${f.label}。年末の受注や在庫で変わります。`); if(f&&f.unknownVat) w.push('<b>消費税の影響を入れていません。</b>簡易課税や税抜経理の方は結果が大きくズレることがあります。'); if(f&&f.simpleVat) w.push('消費税は経費の全部に消費税がかかるものとして概算しています。'); if(f&&f.foodWarn) w.push(`${S.year}年は食料品の税率が4月で変わります。1〜3月と4月以降を分けて入れると精度が上がります。`); if(f&&f.diff&&f.estimated) w.push(`消費税の精算分 ${yen(f.diff)} は${f.usesInn?'売上・経費と人件費の割合':'売上'}からの概算です。`); if(S.prevFurusato) w.push(`前年の寄附は ${yen(S.prevFurusato)} でした。`);
   const rows=[]; if(f) rows.push(['事業所得の見込み（控除前）',f.pre],['青色申告特別控除',-f.aoiro]); if(S.salary) rows.push(['給与所得',r.salaryIncome]); if(S.pension||S.otherIncome) rows.push(['年金・その他の所得',r.pensionIncome+S.otherIncome]);
   rows.push(['合計所得金額',r.gokei],['所得控除（所得税／住民税）',fmt(r.ded)+' ／ '+fmt(r.dedJ)],['課税所得（住民税）',r.kazeiJ],['所得税の税率',(r.rate*100).toFixed(0)+'%'],['住民税 所得割額',r.shotokuwari],[r.capped?'特例分の上限（193万円で頭打ち）':'特例分の上限（20%）',r.tokurei]);
   if(f&&f.diff) rows.splice(1,0,['消費税の精算差益',f.diff]);
@@ -224,7 +224,7 @@ function resultHtml(){
       <p class="note">節税したつもりが損をしてしまう。そんな不安がある方は一度税理士にご相談ください。</p>
       <a href="https://metis.tax/contact" onclick="track('consult_click',{mode:S.mode})" class="b1" style="display:block;text-align:center;text-decoration:none;padding:14px;border-radius:12px">メーティス税理士法人に相談する</a></div>
     <div class="card"><details><summary>計算の内訳</summary><table class="kv">${rows.map(([k,v])=>`<tr><td>${k}</td><td>${typeof v==='number'?fmt(v):v}</td></tr>`).join('')}</table><p class="note">限度額 ＝ 所得割額×20% ÷（90%−所得税率×1.021）＋2,000円</p></details>
-    <button class="b3 sm noprint" style="margin-top:8px" onclick="window.print()">印刷・保存</button>${S.fromNencho?'<a href="../" class="b3 sm" style="margin-left:8px;text-decoration:none;display:inline-block">年末調整に戻る</a>':''}</div>`;
+    <button class="b3 sm noprint" style="margin-top:8px" onclick="window.print()">印刷・保存</button></div>`;
 }
 
 // ---------- 写真の読み取り ----------
@@ -245,15 +245,9 @@ function applyShinkoku(d){ if(d.doc_type!=='shinkoku') throw new Error('確定�
   const jin=(+f.kafu_hitorioya||0)+(+f.gakusei_shogai||0); if(jin&&!Object.values(S.per).some(x=>x)) S.per.shogai=Math.round(jin/270000);
   if(d.name&&!S.name) S.name=d.name; S.biz.shinkokuRead=true; }
 
-// ---------- 年末調整からの取り込み ----------
-async function loadNencho(){ try{ const res=await fetch('api.php?a=nencho',{credentials:'same-origin'}); const j=await res.json(); if(!j.ok) throw new Error(j.error); const x=j.inputs; S=fresh(); S.mode='salary'; S.fromNencho=true; S.certsRead=!!j.certs_read; S.year=j.year; S.name=j.name||'';
-  S.salary=x.salary; S.pension=x.pension; S.over65=!!x.over65; S.otherIncome=x.otherIncome; S.adjustApplies=!!x.adjustApplies; S.kokuho=x.shaho.kokuho; S.nenkin=x.shaho.nenkin; S.shEtc=x.shaho.etc; S.kyosai=x.kyosai; S.life=x.life; S.jishin=x.jishin; S.oldLong=x.oldLong; S.loanBalance=x.loanBalance;
-  S.hasSpouse=x.spouseIncome==null?'no':'yes'; S.spouseIncome=x.spouseIncome||0; S.spouseRev=S.spouseIncome>0?S.spouseIncome+650000:0; S.spouseOver70=!!x.spouseOver70; S.dep=x.dependents; S.spr=x.specialRelatives||[]; S.sprRev=S.spr.length?S.spr[0]+650000:0; S.per=x.personal;
-  steps=buildSteps(); idx=steps.findIndex(s=>s.id==='result'); render(); }catch(e){ S=fresh(); steps=buildSteps(); idx=0; render(); } }
-
 // ---------- 描画 ----------
 let trackedResult=false;
-function render(){ steps=buildSteps(); if(idx>=steps.length) idx=steps.length-1; const st=steps[idx]; if(st.last&&!trackedResult){ trackedResult=true; track('sim_result',{mode:S.mode,from_nencho:S.fromNencho?1:0}); } if(!st.last) trackedResult=false;
+function render(){ steps=buildSteps(); if(idx>=steps.length) idx=steps.length-1; const st=steps[idx]; if(st.last&&!trackedResult){ trackedResult=true; track('sim_result',{mode:S.mode}); } if(!st.last) trackedResult=false;
   $('#prog').innerHTML=steps.map((s,i)=>`<span class="${i<idx?'done':i===idx?'on':''}"></span>`).join('');
   $('#view').innerHTML=st.last?st.html():`<div class="card"><h1>${st.t}</h1>${st.html()}<div class="err" id="err"></div></div>`;
   document.querySelectorAll('.big button').forEach(b=>b.addEventListener('click',()=>{ b.parentElement.querySelectorAll('button').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); }));
@@ -263,7 +257,7 @@ function render(){ steps=buildSteps(); if(idx>=steps.length) idx=steps.length-1;
 $('#next').onclick=()=>{ const st=steps[idx]; try{ if(st.next) st.next(); const ns=buildSteps(); const i=ns.findIndex(x=>x.id===st.id); idx=i>=0?i+1:idx+1; render(); }catch(e){ $('#err').textContent=e.message; } };
 $('#back').onclick=()=>{ if(idx>0){ idx--; render(); } };
 $('#menu').onclick=()=>{ if(confirm('最初からやり直しますか？')){ S=fresh(); idx=0; render(); } };
-if(new URLSearchParams(location.search).get('from')==='nencho') loadNencho(); else render();
+render();
 </script>
 </body>
 </html>

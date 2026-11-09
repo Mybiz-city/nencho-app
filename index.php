@@ -199,8 +199,7 @@ function buildSteps(){
 
   // 5 確認
   s.push({id:'r_cmp', sec:5, title:'内容の確認', html:()=>compareHtml(), nextLabel:'この内容で提出する', next: async()=>{ await api('submit'); }});
-  s.push({id:'r_done', sec:5, title:'提出しました', html:()=>`<div class="fin"><div class="ok">✓</div><h2>提出が完了しました</h2><p>${R.submitted_at? new Date(R.submitted_at).toLocaleString('ja-JP'):''}</p><p class="note">内容を直したいときは、もう一度このアプリを開いて進めば、再提出できます。<br>控除証明書の原本は、会社の指示に従って提出してください。</p>
-    <div class="card" style="text-align:left;margin-top:18px"><h2>ふるさと納税をする方へ（任意）</h2><p>今年の寄附は12月31日まで。入力した年収や家族の内容をそのまま使って、<b>自己負担2,000円で収まる上限の目安</b>を出せます。</p><a href="furusato/?from=nencho" class="b2" style="display:block;text-align:center;padding:13px;border-radius:12px;text-decoration:none">ふるさと納税の目安を見る</a><p class="note" style="margin-top:8px">概算の目安です。寄附はご自身の判断でお願いします。</p></div></div>`, last:true});
+  s.push({id:'r_done', sec:5, title:'提出しました', html:()=>`<div class="fin"><div class="ok">✓</div><h2>提出が完了しました</h2><p>${R.submitted_at? new Date(R.submitted_at).toLocaleString('ja-JP'):''}</p><p class="note">内容を直したいときは、もう一度このアプリを開いて進めば、再提出できます。<br>控除証明書の原本は、会社の指示に従って提出してください。</p></div></div>`, last:true});
   return s;
 }
 
