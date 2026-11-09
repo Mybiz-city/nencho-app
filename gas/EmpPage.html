@@ -82,18 +82,30 @@ const api = (a, body) => new Promise((res, rej) => {
 });
 const toB64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });
 const A = () => R.answers;
-// 保存：画面はすぐ進め、サーバーへの保存は裏で順番に行う（待ち時間をなくす）。判定結果が要る場面は saveWait を使う
-let saveQueue = Promise.resolve(); let saveErr = null;
+// 保存：画面はすぐ進め、サーバーへの保存は裏でまとめて送る（待ち時間をなくす）。判定結果が要る場面は saveWait を使う
+let pendingSaves = []; let inflight = false; let flushWaiters = []; let saveErr = null;
 const applyLocal = (answers, extra) => { if (answers) Object.assign(R.answers, answers); if (extra && Array.isArray(extra.family)) R.family = extra.family; if (extra && extra.consent && !R.consent_at) R.consent_at = new Date().toISOString(); };
-const saveWait = (answers, extra) => api('save', Object.assign({answers, step: steps[idx]?.id}, extra || {}));
+const saveWait = async (answers, extra) => { await flush(); return api('save', Object.assign({answers, step: steps[idx]?.id}, extra || {})); };
 const save = (answers, extra) => {
-  R._fresh=false; applyLocal(answers, extra);
-  const body = Object.assign({answers, step: steps[idx]?.id}, extra || {});
-  saveQueue = saveQueue.then(() => api('save', body)).catch(async e => { try { await api('save', body); } catch (e2) { saveErr = e2.message; showSaveErr(); } });
-  return Promise.resolve({ok:true});
+  R._fresh = false; applyLocal(answers, extra);
+  pendingSaves.push(Object.assign({answers: answers || {}, step: steps[idx]?.id}, extra || {}));
+  pump();
+  return Promise.resolve({ok: true});
 };
+function mergeSaves(list){ const m = {answers: {}}; list.forEach(b => { Object.assign(m.answers, b.answers || {}); if (b.family) m.family = b.family; if (b.consent) m.consent = true; if (b.step) m.step = b.step; if (b.change) m.change = (m.change ? m.change + '、' : '') + b.change; }); return m; }
+async function pump(){
+  if (inflight || !pendingSaves.length) return;
+  inflight = true; const batch = pendingSaves; pendingSaves = [];
+  const body = mergeSaves(batch);
+  try { await api('save', body); }
+  catch (e) { try { await api('save', body); } catch (e2) { saveErr = e2.message; showSaveErr(); } }
+  // サーバーの返事で R が置き換わるので、まだ送っていない分を重ね直す
+  pendingSaves.forEach(b => applyLocal(b.answers, b));
+  inflight = false;
+  if (pendingSaves.length) pump(); else { const w = flushWaiters; flushWaiters = []; w.forEach(f => f()); }
+}
 function showSaveErr(){ let b=$('#saveerr'); if(!b){ b=document.createElement('div'); b.id='saveerr'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C8372D;color:#fff;padding:10px 14px;font-size:14px;z-index:99'; document.body.appendChild(b); } b.innerHTML='保存できませんでした。電波の良い場所で、この画面をもう一度開き直してください（'+esc(saveErr)+'）'; }
-const flush = () => saveQueue;
+const flush = () => (inflight || pendingSaves.length) ? new Promise(r => flushWaiters.push(r)) : Promise.resolve();
 
 // ---------- 和暦ヘルパー ----------
 const eras = [['令',2019,5,1],['平',1989,1,8],['昭',1926,12,25],['大',1912,7,30],['明',1868,1,1]];
@@ -300,8 +312,8 @@ function certStep(id, title, question, cat, extra){
 function prevAmount(cat){ const am=(R.prev&&R.prev.amounts)||{}; const lab={life_new:'一般（新）',life_old:'一般（旧）',kaigo:'介護医療',nenkin_new:'個人年金（新）',nenkin_old:'個人年金（旧）',jishin:'地震',old_songai:'旧長期',kyosai:'共済・iDeCo',zandaka1:'年末残高'}; const m={life:['life_new','life_old','kaigo','nenkin_new','nenkin_old'], jishin:['jishin','old_songai'], kyosai:['kyosai'], jutaku:['zandaka1']}; const parts=(m[cat]||[]).filter(k=>am[k]>0).map(k=>lab[k]+' '+yen(am[k])); return parts.join('、'); }
 function prevCerts(cat){ return (R.prev_certs||[]).filter(c=>c.cat===cat); }
 function camHtml(kind,cat){ return `<label class="cam" style="margin-top:8px">📷 カメラで撮る／写真を選ぶ<input type="file" accept="image/*" capture="environment" data-cam="${kind}" data-cat="${cat||''}"></label>`; }
-function waitOn(msg){ let w=$('#waitbox'); if(!w){ w=document.createElement('div'); w.id='waitbox'; w.style.cssText='position:fixed;inset:0;background:rgba(255,255,255,.85);z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:30px'; document.body.appendChild(w); } w.innerHTML=`<div style="width:46px;height:46px;border:5px solid #ddd;border-top-color:var(--c);border-radius:50%;animation:spin 1s linear infinite"></div><b style="font-size:18px">${msg}</b><div class="note" id="waitsec">0秒</div><div class="note">そのままお待ちください。20秒を超えても終わらなければ、電波の良い所でやり直してください。</div>`; let n=0; w._t=setInterval(()=>{ n++; const e=$('#waitsec'); if(e) e.textContent=n+'秒'; },1000); }
-function waitOff(){ const w=$('#waitbox'); if(w){ clearInterval(w._t); w.remove(); } }
+function waitOn(msg){ let w=$('#waitbox'); if(!w){ w=document.createElement('div'); w.id='waitbox'; w.style.cssText='position:fixed;inset:0;background:rgba(255,255,255,.85);z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:30px'; document.body.appendChild(w); } w.innerHTML=`<div style="width:46px;height:46px;border:5px solid #ddd;border-top-color:var(--c);border-radius:50%;animation:spin 1s linear infinite"></div><b style="font-size:18px">${msg}</b><div class="note" id="waitsec">0秒</div><div class="note">そのままお待ちください。写真の読み取りは通常20〜40秒かかります。90秒を超えても終わらなければ、電波の良い所でやり直してください。</div>`; document.querySelectorAll('.nav button').forEach(b=>b.disabled=true); let n=0; w._t=setInterval(()=>{ n++; const e=$('#waitsec'); if(e) e.textContent=n+'秒'; },1000); }
+function waitOff(){ const w=$('#waitbox'); if(w){ clearInterval(w._t); w.remove(); } document.querySelectorAll('.nav button').forEach(b=>b.disabled=false); }
 function bindCam(kind, sub){
   document.querySelectorAll('[data-cam]').forEach(inp=>inp.onchange=async()=>{ let f=inp.files[0]; if(!f) return; waitOn(kind==='cert'?'写真を送って読み取っています':'写真を送っています'); try{ f=await shrink(f); }catch(e){} const fd={kind, data: await toB64(f), mime: f.type||'image/jpeg'}; try{ const j=await api('upload',fd); if(inp.dataset.cat||sub){ await api('cert_update',{id:j.cert.id, cat:inp.dataset.cat, sub}); R.certs=R.certs.map(c=>c.id===j.cert.id?Object.assign(c,{cat:inp.dataset.cat, sub}):c); await api('save',{}); } waitOff(); render(); }catch(e){ waitOff(); alert(e.message); } });
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(!confirm('この写真を削除しますか？')) return; await api('cert_update',{id:b.dataset.del, status:'deleted'}); render(); });
@@ -354,7 +366,7 @@ function compareHtml(){
 async function render(){
   steps = buildSteps();
   if (idx >= steps.length) idx = steps.length-1;
-  if (steps[idx].id==='r_cmp' && !R._fresh) { view.innerHTML='<div class="card"><p>入力内容を確認しています…</p></div>'; await flush(); await api('load'); R._fresh=true; steps=buildSteps(); }
+  if (steps[idx].id==='r_cmp' && !R._fresh) { view.innerHTML='<div class="card"><p>入力内容を確認しています…</p></div>'; await flush(); R._fresh=true; steps=buildSteps(); }
   const st = steps[idx];
   const secs=['はじめに','ご本人','配偶者','家族','証明書','確認'];
   $('#prog').innerHTML = secs.map((n,i)=>`<span class="${i<st.sec?'done':i===st.sec?'on':''}" title="${n}"></span>`).join('');
@@ -374,8 +386,8 @@ $('#menu').onclick = ()=>{ const m=document.createElement('div'); m.style.cssTex
   m.querySelector('#m_top').onclick=()=>{ m.remove(); idx=0; render(); };
   m.querySelector('#m_unbind').onclick=async()=>{ if(!confirm('このスマホからの自動ログインをやめます。次に開くときは、会社に新しい初回番号を発行してもらう必要があります。よろしいですか？')) return; await api('unbind'); try{ localStorage.removeItem(DEVKEY); }catch(e){} sessionStorage.removeItem('nencho_t'); TOKEN=''; m.remove(); loginView('このスマホの登録を解除しました'); };
   m.querySelector('#m_reset').onclick=async()=>{ if(!confirm('今年に入力した内容と写真をすべて消します。前年の登録は残ります。よろしいですか？')) return; await api('reset'); m.remove(); idx=0; toast('消しました。最初から入力できます'); render(); }; };
-async function shrink(file){ // 送る前に長辺1800pxのJPEGに縮める（通信量と読み取り費用を抑える）
-  if(!/^image\//.test(file.type)) return file; let bmp; try{ bmp=await createImageBitmap(file,{imageOrientation:'from-image'}); }catch(e){ bmp=await createImageBitmap(file); } const s=Math.min(1, 1800/Math.max(bmp.width,bmp.height)); if(s===1&&file.size<1500000) return file;
+async function shrink(file){ // 送る前に長辺1600pxのJPEGに縮める（通信量と読み取り費用を抑える）
+  if(!/^image\//.test(file.type)) return file; let bmp; try{ bmp=await createImageBitmap(file,{imageOrientation:'from-image'}); }catch(e){ bmp=await createImageBitmap(file); } const s=Math.min(1, 1600/Math.max(bmp.width,bmp.height)); if(s===1&&file.size<1500000) return file;
   const cv=document.createElement('canvas'); cv.width=Math.round(bmp.width*s); cv.height=Math.round(bmp.height*s); cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height);
   return await new Promise(r=>cv.toBlob(b=>r(b||file),'image/jpeg',0.88)); }
 function fmtYenInputs(){ document.querySelectorAll('.yen input').forEach(inp=>{ if(inp.dataset.fmt) return; inp.dataset.fmt='1'; const f=()=>{ const d=inp.value.replace(/[^\d]/g,''); inp.value = d? Number(d).toLocaleString('ja-JP'): ''; }; inp.addEventListener('input',f); f(); }); }
