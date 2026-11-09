@@ -123,7 +123,7 @@
     const limitRaw = shotokuwari > 0 ? tokurei / (0.9 - rate * 1.021) + 2000 : 0;
     const limit = Math.floor(limitRaw / 1000) * 1000;
     const warnings = [];
-    if (capped || shotokuwari * 0.2 > 1500000) warnings.push('<b>所得が高い方は、この画面の目安は使わないでください。</b>2027年の寄附からの控除上限（193万円）や返礼品の一時所得課税など、個別の判断が要ります。税理士にシミュレーションを依頼してください。');
+    if ((i.salary || 0) >= 20000000 || gokei >= 18050000) warnings.push('<b>所得が高い方は、この画面の目安は使わないでください。</b>2027年の寄附からの控除上限（193万円）や返礼品の一時所得課税など、個別の判断が要ります。税理士にシミュレーションを依頼してください。');
     if (loanJ > 0) warnings.push('住宅ローン控除が住民税に回る見込みです。所得割から差し引いた後の額で計算しました。');
     if ((sh.kyuyo || 0) > 0 && (sh.kokuho || 0) > 0) warnings.push('給与天引きの社会保険料と国民健康保険料の両方が入っています。年の途中で切り替わった場合だけ両方になります。');
     if (kazeiJ - jinDiff > 0 && incomeTax(Math.max(0, kazeiJ - jinDiff)).rate !== incomeTax(Math.max(0, kazeiJ - jinDiff - limitRaw)).rate) warnings.push('寄附後に所得税率の境目をまたぐ可能性があります。限度額は少なめに見てください。');
