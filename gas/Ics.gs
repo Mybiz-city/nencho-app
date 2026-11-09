@@ -199,7 +199,10 @@ function icsExport(client, onlySubmitted, year, subset) {
     if (onlySubmitted && e.status !== 'submitted') return;
     var ed = pathFolder([client, String(year), k], false); if (!ed) return;
     var r = jsonLoad(ed, 'answers.json');
-    if (!r) { var prev = jsonLoad(ed, 'prev.json'); if (!prev) return; r = emptyRecord(client, e.emp); r.prev = prev; } // まだ開いていない人は前年の内容のまま出す
+    if (!r || r.status === 'new' || !r.consent_at) { // まだ入力していない人：前年CSVの行をそのまま出す（判定で上書きしない）
+      var prev = (r && r.prev) || jsonLoad(ed, 'prev.json'); if (!prev || !prev.raw) return;
+      var raw = prev.raw.slice(0, ICS_COLS); while (raw.length < ICS_COLS) raw.push(''); lines.push(raw); return;
+    }
     lines.push(icsRowFromRecord(r));
   });
   if (subset) { var keep = icsNenchoColumns(); for (var n = 2; n < lines.length; n++) { var l = lines[n]; lines[n] = keep.map(function (i) { return l[i] === undefined ? '' : l[i]; }); } }
