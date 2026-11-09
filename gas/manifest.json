@@ -1,0 +1,21 @@
+{
+ "version": "20261109-1857",
+ "note": "更新をGitHubのAPIなしに（回数制限の403を回避）、事務所画面の一覧を高速化",
+ "files": [
+  "Admin.gs",
+  "AdminPage.html",
+  "Claude.gs",
+  "Code.gs",
+  "Common.gs",
+  "Company.gs",
+  "CompanyPage.html",
+  "Emp.gs",
+  "EmpPage.html",
+  "Ics.gs",
+  "Judge.gs",
+  "Update.gs",
+  "Xlsx.gs",
+  "Zip.gs",
+  "appsscript.json"
+ ]
+}

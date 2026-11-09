@@ -234,8 +234,12 @@ function summaryUpdate(client, emp, year) {
     if (!ed) { delete s[emp]; jsonSave(cd, '_summary.json', s); return; }
     s[emp] = summaryRow(client, emp, ed);
     jsonSave(cd, '_summary.json', s);
+    homeUpdate(client, year, s);
   });
 }
+/** ホーム画面用の件数（顧問先×年）。_home.json に1枚で持つ */
+function homeCounts(s) { var cnt = { submitted: 0, in_progress: 0, 'new': 0, retired: 0 }, n = 0; for (var k in s) { if (s[k].roster === 'retired') cnt.retired++; else { n++; cnt[s[k].status] = (cnt[s[k].status] || 0) + 1; } } return { n: n, cnt: cnt }; }
+function homeUpdate(client, year, s) { var h = jsonLoad(rootFolder(), '_home.json', {}); h[String(year)] = h[String(year)] || {}; h[String(year)][client] = homeCounts(s); jsonSave(rootFolder(), '_home.json', h); }
 function summaryRow(client, emp, ed) {
   var r = jsonLoad(ed, 'answers.json'), p = jsonLoad(ed, 'prev.json'), ro = jsonLoad(ed, 'roster.json', {});
   var a = (r && r.answers) || {};
@@ -260,6 +264,7 @@ function summaryRebuild(client, year) {
   var s = {}; var it = cd.getFolders();
   while (it.hasNext()) { var f = it.next(); var n = f.getName(); if (n.charAt(0) === '_') continue; s[n] = summaryRow(client, n, f); }
   jsonSave(cd, '_summary.json', s);
+  withLock(function () { homeUpdate(client, year, s); });
   indexAdd(client, year);
   return s;
 }

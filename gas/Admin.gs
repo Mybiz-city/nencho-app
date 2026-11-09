@@ -26,13 +26,13 @@ function adminApi(a, p) {
   switch (a) {
     case 'home': {
       var y = yearOf(p); var ix = indexLoad(), names = clientsLoad(), keys = jsonLoad(rootFolder(), '_company_keys.json', {});
-      var years = {}; var rows = [];
+      var years = {}; var rows = []; var home = jsonLoad(rootFolder(), '_home.json', {}); var hy = home[String(y)] || {};
       Object.keys(ix).sort().forEach(function (cl) {
         (ix[cl].years || []).forEach(function (yy) { years[yy] = 1; });
         if ((ix[cl].years || []).indexOf(String(y)) < 0) return;
-        var s = summaryLoad(cl, y), cnt = { submitted: 0, in_progress: 0, 'new': 0, retired: 0 }, n = 0;
-        for (var k in s) { if (s[k].roster === 'retired') cnt.retired++; else { n++; cnt[s[k].status] = (cnt[s[k].status] || 0) + 1; } }
-        rows.push({ client: cl, name: names[cl] || '', n: n, cnt: cnt, key: !!(keys[cl] && keys[cl].key) });
+        var hc = hy[cl];
+        if (!hc) { hc = homeCounts(summaryLoad(cl, y)); hy[cl] = hc; home[String(y)] = hy; jsonSave(rootFolder(), '_home.json', home); } // 古いデータの初回だけ作る
+        rows.push({ client: cl, name: names[cl] || '', n: hc.n, cnt: hc.cnt, key: !!(keys[cl] && keys[cl].key) });
       });
       return { ok: true, year: y, cur_year: c.year, years: Object.keys(years).sort().reverse(), rows: rows, clients_total: Object.keys(names).length,
         zipdict: zipDictMeta(), totp: !!c.admin_totp_secret, backup_left: jsonLoad(rootFolder(), '_backup_codes.json', []).length, version: c.version, url: appUrl(),
