@@ -9,9 +9,13 @@ function packRecord(r) {
   return o;
 }
 function devicesLoad() { return jsonLoad(rootFolder(), '_devices.json', {}); }
+/** スマホの合鍵が有効な日数（初回番号を入れてから）。スクリプト プロパティ DEVICE_DAYS で変更可 */
+function deviceDays() { var n = parseInt(PropertiesService.getScriptProperties().getProperty('DEVICE_DAYS') || '', 10); return n > 0 ? n : 3; }
 function deviceBind(client, emp) {
   var tok = randomHex(24), h = sha256(tok);
-  withLock(function () { var d = jsonLoad(rootFolder(), '_devices.json', {}); d[h] = { client: client, emp: emp, at: nowIso() }; jsonSave(rootFolder(), '_devices.json', d); });
+  withLock(function () { var d = jsonLoad(rootFolder(), '_devices.json', {}); var lim = Date.now() - deviceDays() * 86400000;
+    for (var k in d) if (new Date(d[k].at).getTime() < lim) delete d[k]; // 期限切れの合鍵は捨てる
+    d[h] = { client: client, emp: emp, at: nowIso() }; jsonSave(rootFolder(), '_devices.json', d); });
   return tok;
 }
 function deviceUnbindAll(client, emp) {
@@ -28,6 +32,7 @@ function empApi(a, p) {
     case 'device_login': { // このスマホの合鍵で入る
       var dev = String(p.dev || ''); if (!dev) return { ok: true, known: false };
       var d = devicesLoad()[sha256(dev)]; if (!d) return { ok: true, known: false };
+      if (Date.now() - new Date(d.at).getTime() > deviceDays() * 86400000) return { ok: true, known: false, expired: true, days: deviceDays() };
       var ro = jsonLoad(empDir(d.client, d.emp, false), 'roster.json', {});
       if ((ro.status || 'active') === 'retired') return { ok: true, known: false, retired: true };
       var r = loadRecord(d.client, d.emp);
