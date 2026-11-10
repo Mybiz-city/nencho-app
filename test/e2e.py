@@ -33,7 +33,7 @@ async def main():
         await pg.click('[data-edit="0"]'); await pg.wait_for_timeout(300); await pg.screenshot(path=OUT+'e8_family_edit.png')
         await pg.click('#fsave'); await pg.wait_for_timeout(500); await pg.click('[data-edit="1"]'); await pg.wait_for_timeout(300); await pg.click('#fz0'); await pg.click('#fsave'); await pg.wait_for_timeout(500)
         await pg.click('#next'); await pg.wait_for_timeout(400); await pg.click('[data-k=has_life][data-v=yes]'); await pg.wait_for_timeout(600); await pg.screenshot(path=OUT+'e9_cert.png')
-        await pg.set_input_files('[data-cam=cert]', '/tmp/sample_cert.png'); await pg.wait_for_timeout(3000); await pg.screenshot(path=OUT+'e10_cert_read.png', full_page=True)
+        await pg.set_input_files('[data-cam=cert]', '/tmp/sample_cert.png'); await pg.click('#cp_ok'); await pg.wait_for_timeout(3000); await pg.screenshot(path=OUT+'e10_cert_read.png', full_page=True)
         await pg.click('[data-ok]'); await pg.wait_for_timeout(600)
         for sel in ['#next','[data-k=has_jishin][data-v=no]','#next','[data-k=has_shaho][data-v=no]','#next','[data-k=has_kyosai][data-v=no]','#next','[data-k=has_jutaku][data-v=no]','#next']:
             await pg.click(sel); await pg.wait_for_timeout(400)

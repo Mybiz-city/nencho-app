@@ -21,6 +21,8 @@ h1{font-size:19px;margin:0 0 6px;color:#111}
 h2{font-size:17px;margin:0 0 10px}
 .sec{color:var(--cd);font-size:13px;font-weight:700;letter-spacing:.05em;margin-bottom:4px}
 p{margin:6px 0}
+.itr select[name=cat]{min-width:74px}
+.rmx{flex:0 0 auto;width:30px;padding:8px 0;border:1px solid #ccc;border-radius:8px;background:#fff;color:#888;font-size:16px}
 .hint{background:#FFF8E1;border-left:4px solid #F2B705;padding:8px 10px;border-radius:6px;font-size:14px;color:#444;margin-top:10px}
 .prev{background:var(--cl);border-radius:10px;padding:10px 12px;font-size:15px;margin:8px 0}
 .prev b{color:var(--cd)}
@@ -61,7 +63,7 @@ table.cmp tr.chg td{background:#FFF8E1}
 </head>
 <body>
 <header><b id="appName"><?= cfg.app_name ?></b><span><small id="who"></small> <button type="button" id="menu" class="b3" style="font-size:13px;padding:5px 10px;display:none">…</button></span></header>
-<div class="wrap"><div class="prog" id="prog"></div><div id="view"><div class="spin">読み込み中…</div></div></div>
+<div class="wrap"><div id="savest" style="text-align:right;font-size:12px;color:#666;margin:-6px 0 6px">入力は自動で保存されます。途中で閉じても続きから再開できます</div><div class="prog" id="prog"></div><div id="view"><div class="spin">読み込み中…</div></div></div>
 <div class="nav" id="nav" style="display:none"><button class="b3" id="back">戻る</button><button class="b1" id="next">次へ</button></div>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
@@ -89,23 +91,27 @@ const applyLocal = (answers, extra) => { if (answers) Object.assign(R.answers, a
 const saveWait = async (answers, extra) => { await flush(); return api('save', Object.assign({answers, step: steps[idx]?.id}, extra || {})); };
 // 判定（扶養・配偶者の区分）は手元でも計算できる（静的版に Judge.gs を同梱）。無ければサーバーの返事を待つ
 const recompute = () => { if (window.judgeCompute) { try { R.computed = window.judgeCompute(R); } catch (e) {} } };
+const saveSt = t => { const e=$('#savest'); if(e) e.textContent=t; };
 const save = (answers, extra) => {
   R._fresh = false; applyLocal(answers, extra); recompute();
   pendingSaves.push(Object.assign({answers: answers || {}, step: steps[idx]?.id}, extra || {}));
-  pump();
+  saveSt('保存中…'); pump();
   return Promise.resolve({ok: true});
 };
+// 保存以外の操作（証明書の確定・削除）も同じ列に並べ、順番に1つずつ送る。apply は手元の画面への反映
+const queueCall = (call, body, apply) => { R._fresh = false; apply(); pendingSaves.push({call, body, apply}); saveSt('保存中…'); pump(); };
 function mergeSaves(list){ const m = {answers: {}}; list.forEach(b => { Object.assign(m.answers, b.answers || {}); if (b.family) m.family = b.family; if (b.consent) m.consent = true; if (b.step) m.step = b.step; if (b.change) m.change = (m.change ? m.change + '、' : '') + b.change; }); return m; }
 async function pump(){
   if (inflight || !pendingSaves.length) return;
-  inflight = true; const batch = pendingSaves; pendingSaves = [];
-  const body = mergeSaves(batch);
-  try { await api('save', body); }
-  catch (e) { try { await api('save', body); } catch (e2) { saveErr = e2.message; showSaveErr(); } }
+  inflight = true; let batch;
+  if (pendingSaves[0].call) batch = [pendingSaves.shift()]; else { batch = []; while (pendingSaves.length && !pendingSaves[0].call) batch.push(pendingSaves.shift()); }
+  const send = () => batch[0].call ? api(batch[0].call, batch[0].body) : api('save', mergeSaves(batch));
+  try { await send(); }
+  catch (e) { try { await send(); } catch (e2) { saveErr = e2.message; showSaveErr(); } }
   // サーバーの返事で R が置き換わるので、まだ送っていない分を重ね直す
-  pendingSaves.forEach(b => applyLocal(b.answers, b)); if (pendingSaves.length) recompute();
+  pendingSaves.forEach(b => b.call ? b.apply() : applyLocal(b.answers, b)); if (pendingSaves.length) recompute();
   inflight = false;
-  if (pendingSaves.length) pump(); else { const w = flushWaiters; flushWaiters = []; w.forEach(f => f()); }
+  if (pendingSaves.length) pump(); else { if (!saveErr) saveSt('保存しました ✓　途中で閉じても続きから再開できます'); const w = flushWaiters; flushWaiters = []; w.forEach(f => f()); }
 }
 function showSaveErr(){ let b=$('#saveerr'); if(!b){ b=document.createElement('div'); b.id='saveerr'; b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C8372D;color:#fff;padding:10px 14px;font-size:14px;z-index:99'; document.body.appendChild(b); } b.innerHTML='保存できませんでした。電波の良い場所で、この画面をもう一度開き直してください（'+esc(saveErr)+'）'; }
 const flush = () => (inflight || pendingSaves.length) ? new Promise(r => flushWaiters.push(r)) : Promise.resolve();
@@ -128,7 +134,8 @@ function incomesHtml(prefix, list){
   return `<div id="${prefix}_box">` + list.map((it,i)=>incRow(prefix,i,it)).join('') + `</div><button type="button" class="b3" style="font-size:14px;padding:8px 12px" onclick="addInc('${prefix}')">＋ 別の種類の収入を足す</button>
   <div class="note">年間（1〜12月）の見込み額。給与は<b>年収</b>（税込の総支給額。交通費などの非課税分は除く）。年金は1年分の支給額。 <a href="#" onclick="showIncomeHelp();return false" style="color:var(--cd);font-weight:700">年収と所得の違い</a></div>`;
 }
-function incRow(prefix,i,it){ return `<div class="row inc" style="margin-top:6px"><select name="${prefix}_type">${Object.entries(incTypes).map(([k,v])=>`<option value="${k}" ${it.type===k?'selected':''}>${v}</option>`).join('')}</select><div class="yen"><input type="tel" name="${prefix}_amount" value="${esc(it.amount||'')}" placeholder="0"></div></div>`; }
+function incRow(prefix,i,it){ return `<div class="row inc" style="margin-top:6px"><select name="${prefix}_type">${Object.entries(incTypes).map(([k,v])=>`<option value="${k}" ${it.type===k?'selected':''}>${v}</option>`).join('')}</select><div class="yen"><input type="tel" name="${prefix}_amount" value="${esc(it.amount||'')}" placeholder="0"></div>${i>0?`<button type="button" class="rmx" onclick="this.closest('.inc').remove()">×</button>`:''}</div>`; }
+window.rmItr = b => { const r=b.closest('.itr'); const p=r.previousElementSibling; if(p&&p.classList.contains('note')) p.remove(); r.remove(); };
 window.addInc = p => { const box=$('#'+p+'_box'); box.insertAdjacentHTML('beforeend', incRow(p, box.children.length, {type:'other',amount:''})); fmtYenInputs(); };
 function readIncomes(prefix){ const t=[...document.querySelectorAll(`[name=${prefix}_type]`)], a=[...document.querySelectorAll(`[name=${prefix}_amount]`)]; return t.map((s,i)=>({type:s.value, amount:Number(String(a[i].value).replace(/[^\d]/g,''))||0})); }
 
@@ -165,7 +172,7 @@ function buildSteps(){
     <div class="hint">別の勤務先に出す場合、この会社では年末調整をせず、ご自身で確定申告をします。</div>`,
     mount:()=>{ document.querySelectorAll('[data-k=other_employer]').forEach(b=>b.addEventListener('click',()=>{$('#e2box').style.display=b.dataset.v==='yes'?'block':'none';})); },
     next: async()=>{ const v=pick('other_employer'); if(!v) throw new Error('どちらかを選んでください'); const d=v==='yes'? pick('other_employer_decl'):'here'; if(v==='yes'&&!d) throw new Error('どちらに出すか選んでください'); await save({other_employer:v, other_employer_decl:d}); }});
-  if (a.other_employer_decl==='other') { s.push({id:'p_otsu', sec:5, title:'この会社では年末調整をしません', html:()=>`<p>扶養控除等申告書を別の勤務先に出す場合、この会社では年末調整を行いません（給与は乙欄で計算します）。</p><p>ご自身で確定申告をしてください。この画面で「提出」を押すと、その旨が事務所に伝わります。</p><div class="hint">入力を間違えた場合は「戻る」で直せます。</div>`, nextLabel:'この内容で提出する', next: async()=>{ await flush(); await api('submit'); }}); s.push({id:'r_done', sec:5, title:'提出しました', html:()=>`<div class="fin"><div class="ok">✓</div><h2>送信しました</h2><p class="note">この会社では年末調整を行いません。確定申告の時期にご相談ください。</p></div>`, last:true}); return s; }
+  if (a.other_employer_decl==='other') { s.push({id:'p_otsu', sec:5, title:'この会社では年末調整をしません', html:()=>`<p>扶養控除等申告書を別の勤務先に出す場合、この会社では年末調整を行いません（給与は乙欄で計算します）。</p><p>ご自身で確定申告をしてください。この画面で「提出」を押すと、その旨が事務所に伝わります。</p><div class="hint">入力を間違えた場合は「戻る」で直せます。</div>`, nextLabel:'この内容で提出する', next: async()=>{ waitOn('提出しています'); try{ await flush(); await api('submit'); } finally { waitOff(); } }}); s.push({id:'r_done', sec:5, title:'提出しました', html:()=>`<div class="fin"><div class="ok">✓</div><h2>送信しました</h2><p class="note">この会社では年末調整を行いません。確定申告の時期にご相談ください。</p></div>`, last:true}); return s; }
   s.push({id:'p_flags', sec:1, title:'障害・寡婦・ひとり・勤労', html:()=>{ const f=a.self_flags||{}; return `<p>障害者・寡婦・ひとり親・勤労学生の4つは、当てはまる方だけ控除が増える項目です。<b>当てはまるものがあれば</b>選んでください。</p><p class="note">ほとんどの方は当てはまりません。その場合は何も選ばず「次へ」。</p>
     <label>障害者</label><select id="f_dis"><option value="none">該当しない</option><option value="general" ${f.disability==='general'?'selected':''}>障害者</option><option value="special" ${f.disability==='special'?'selected':''}>特別障害者（重度）</option></select>
     <div id="f_dis_box" style="display:${f.disability&&f.disability!=='none'?'block':'none'}"><label>手帳の種類・等級</label><input type="text" id="f_dis_text" value="${esc(f.disability_text||'')}" placeholder="例：身体障害者手帳 3級"><div class="note">あとで手帳の写真を撮る画面があります</div></div>
@@ -224,7 +231,7 @@ function buildSteps(){
   s.push(certStep('c_jutaku', '住宅ローン控除（2年目以降）', '住宅ローン控除を、今年で2年目以降として受けますか？<span class="note">1年目の方は確定申告になります</span>', 'jutaku', '金融機関の「年末残高証明書」と、税務署から届いた「住宅借入金等特別控除申告書」の両方を撮ってください。'));
 
   // 5 確認
-  s.push({id:'r_cmp', sec:5, title:'内容の確認', html:()=>compareHtml(), nextLabel:'この内容で提出する', next: async()=>{ await flush(); await api('submit'); }});
+  s.push({id:'r_cmp', sec:5, title:'内容の確認', html:()=>compareHtml(), nextLabel:'この内容で提出する', next: async()=>{ waitOn('提出しています'); try{ await flush(); await api('submit'); } finally { waitOff(); } }});
   s.push({id:'r_done', sec:5, title:'提出しました', html:()=>`<div class="fin"><div class="ok">✓</div><h2>提出が完了しました</h2><p>${R.submitted_at? new Date(R.submitted_at).toLocaleString('ja-JP'):''}</p><p class="note">内容を直したいときは、もう一度このアプリを開いて進めば、再提出できます。<br>控除証明書の原本は、会社の指示に従って提出してください。</p></div>`, last:true});
   return s;
 }
@@ -268,7 +275,7 @@ function famEdit(i){
   const f = i>=0 ? R.family[i] : {name:'',kana:'',relation:'子',birth:'',living:'together',addr:'',supporter:'self',disability:'none',incomes:[], change:{kind:'in', ym:'', day:'', reason:''}};
   $('#nav').style.display='none';
   view.innerHTML = `<div class="card"><div class="sec">家族</div><h1>${i>=0?'家族の情報を編集':'家族を追加'}</h1>
-    <label>氏名</label><input type="text" id="fn" value="${esc(f.name)}" placeholder="山田 一郎"><label>フリガナ</label><input type="text" id="fk" value="${esc(f.kana)}"><label>続柄</label><select id="fr">${relOpts.map(r=>`<option ${f.relation===r?'selected':''}>${r}</option>`).join('')}</select><label>生年月日</label>${dateInput('fb',f.birth)}
+    <label>氏名</label><input type="text" id="fn" value="${esc(f.name)}" placeholder="山田 一郎"><label>フリガナ</label><input type="text" id="fk" value="${esc(f.kana)}" placeholder="ヤマダ イチロウ"><label>続柄</label><select id="fr">${relOpts.map(r=>`<option ${f.relation===r?'selected':''}>${r}</option>`).join('')}</select><label>生年月日</label>${dateInput('fb',f.birth)}
     <label>住まい</label><select id="fl"><option value="together" ${f.living==='together'?'selected':''}>同居</option><option value="apart" ${f.living==='apart'?'selected':''}>別居（国内）</option><option value="abroad" ${f.living==='abroad'?'selected':''}>国外</option></select>
     <div id="fa_box" style="display:${f.living!=='together'?'block':'none'}"><label>住所</label><input type="text" id="fa" value="${esc(f.addr||'')}"><div id="fm_box" style="display:${f.living==='abroad'?'block':'none'}"><label>今年の送金額</label><div class="yen"><input type="tel" id="fm" value="${esc(f.remit||'')}"></div></div></div>
     <div id="fr_box" style="display:${f.living==='apart'?'block':'none'}"><label>生活費の仕送りをしていますか</label><select id="frd"><option value="yes" ${f.remit_domestic==='yes'?'selected':''}>している（定期的に）</option><option value="no" ${f.remit_domestic==='no'?'selected':''}>していない</option></select><div class="yen" style="margin-top:6px"><input type="tel" id="frda" value="${esc(f.remit_domestic_amount||'')}" placeholder="年間のおおよその額（任意）"></div><div class="note">別居の家族は、生活費を送っている（生計を一にしている）ことが扶養の条件です。学費・病院代の負担も含みます。</div></div>
@@ -308,7 +315,7 @@ function certStep(id, title, question, cat, extra){
   const key='has_'+cat;
   return {id, sec:4, title, html:()=>{ const a=A(); const mine=(R.certs||[]).filter(c=>c.kind==='cert'&&c.cat===cat&&c.status!=='deleted'); const prevAmt = prevAmount(cat); return `<p>${question}</p>${prevAmt?`<div class="prev"><b>前年の申告</b><br>${prevAmt}</div>`:''}${prevCerts(cat).length?`<div class="prev"><b>前年に提出した証明書</b><br>${prevCerts(cat).map(c=>esc(c.issuer||'')+'：'+(c.items||[]).map(i=>(catNames[i.category]||'')+(i.contract==='old'?'（旧）':'')+' '+yen(i.amount)).join('、')).join('<br>')}<br><span class="note">同じ保険会社から今年のはがきが届いているはずです。1枚ずつ撮ってください。</span></div>`:''}${big(key,[['no','ない'],['yes','ある']], a[key])}
     <div id="cbox_${cat}" style="display:${a[key]==='yes'?'block':'none'}">${extra?`<p class="note">${extra}</p>`:''}<p>証明書を1枚ずつ撮ってください。${R.config.ai?'撮ると自動で金額を読み取るので、合っているか確かめてください。':''}</p>${camHtml('cert',cat)}
-    <div class="list" style="margin-top:10px">${mine.map(certCard).join('')}</div><div class="hint">はがきの四隅が入るように、明るい所で、真上から撮ると読み取りやすくなります。</div></div>`; },
+    <div class="list" style="margin-top:10px">${mine.map(certCard).join('')}</div><div class="hint">撮り方のコツ：文字が読める向き（上下を正しく）で、四隅が入るように、明るい所で真上から。光の反射や影が入ると読み取れないことがあります。うまく読み取れないときは、撮り直すか、金額を手で入力できます。どうしても難しいときは、証明書を会社に提出してください。</div></div>`; },
     mount:()=>{ document.querySelectorAll(`[data-k=${key}]`).forEach(b=>b.addEventListener('click',async()=>{$('#cbox_'+cat).style.display=b.dataset.v==='yes'?'block':'none'; const o={}; o[key]=b.dataset.v; save(o); })); bindCam('cert',cat); bindCertCards(); },
     next: async()=>{ const v=pick(key); if(!v) throw new Error('どちらかを選んでください'); const o={}; o[key]=v; const mine=(R.certs||[]).filter(c=>c.kind==='cert'&&c.cat===cat&&c.status!=='deleted'); if(v==='yes'&&!mine.length) throw new Error('証明書を撮ってください（手元にない場合は「ない」を選び、後日会社に提出してください）'); if(mine.some(c=>c.status==='read'&&!c.confirmed)) throw new Error('読み取り結果の「合っている」または「直す」を押してください'); await save(o); }};
 }
@@ -317,21 +324,25 @@ function prevCerts(cat){ return (R.prev_certs||[]).filter(c=>c.cat===cat); }
 function camHtml(kind,cat){ return `<label class="cam" style="margin-top:8px">📷 カメラで撮る／写真を選ぶ<input type="file" accept="image/*" data-cam="${kind}" data-cat="${cat||''}"></label>`; }
 function waitOn(msg){ let w=$('#waitbox'); if(!w){ w=document.createElement('div'); w.id='waitbox'; w.style.cssText='position:fixed;inset:0;background:rgba(255,255,255,.85);z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:30px'; document.body.appendChild(w); } w.innerHTML=`<div style="width:46px;height:46px;border:5px solid #ddd;border-top-color:var(--c);border-radius:50%;animation:spin 1s linear infinite"></div><b style="font-size:18px">${msg}</b><div class="note" id="waitsec">0秒</div><div class="note">そのままお待ちください。写真の読み取りは通常20〜40秒かかります（保存だけなら数秒）。90秒を超えても終わらなければ、電波の良い所でやり直してください。</div>`; document.querySelectorAll('.nav button').forEach(b=>b.disabled=true); let n=0; w._t=setInterval(()=>{ n++; const e=$('#waitsec'); if(e) e.textContent=n+'秒'; },1000); }
 function waitOff(){ const w=$('#waitbox'); if(w){ clearInterval(w._t); w.remove(); } document.querySelectorAll('.nav button').forEach(b=>b.disabled=false); }
+// 送る前に写真を見せて確かめる（選び間違い・上下逆さまに気づけるように）
+function confirmPhoto(file){ return new Promise(res=>{ const u=URL.createObjectURL(file); const m=document.createElement('div'); m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;display:flex;align-items:center;justify-content:center;padding:14px';
+  m.innerHTML=`<div class="card" style="max-width:420px;width:100%;margin:0;max-height:92vh;overflow:auto"><b>この写真を送りますか？</b><img src="${u}" style="width:100%;max-height:50vh;object-fit:contain;border:1px solid #ddd;border-radius:8px;margin:8px 0"><div class="note">文字が読める向き（上下が正しい）で、光の反射や影がなく、四隅が入っていますか？</div><div class="btns" style="margin-top:10px"><button type="button" class="b3" id="cp_no">選び直す</button><button type="button" class="b1" id="cp_ok">この写真を送る</button></div></div>`;
+  document.body.appendChild(m); const done=v=>{ URL.revokeObjectURL(u); m.remove(); res(v); }; m.querySelector('#cp_ok').onclick=()=>done(true); m.querySelector('#cp_no').onclick=()=>done(false); }); }
 function bindCam(kind, sub){
-  document.querySelectorAll('[data-cam]').forEach(inp=>inp.onchange=async()=>{ let f=inp.files[0]; if(!f) return; waitOn(kind==='cert'?'写真を送って読み取っています':'写真を送っています'); try{ f=await shrink(f); }catch(e){} const b64=await toB64(f); const fd={kind, data: b64, mime: f.type||'image/jpeg', cat: inp.dataset.cat||'', sub: sub||''}; try{ await flush(); const j=await api('upload',fd); if((fd.cat||fd.sub) && (j.cert.cat||'')!==fd.cat){ await api('cert_update',{id:j.cert.id, cat:fd.cat, sub:fd.sub}); } /* サーバーが古い版でも種類が付くように */ localPhotos[j.cert.file]='data:'+fd.mime+';base64,'+b64; await render(); waitOff(); }catch(e){ waitOff(); alert(e.message); } });
-  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(!confirm('この写真を削除しますか？')) return; waitOn('削除しています'); try{ await api('cert_update',{id:b.dataset.del, status:'deleted'}); await render(); }catch(e){ alert(e.message); } waitOff(); });
+  document.querySelectorAll('[data-cam]').forEach(inp=>inp.onchange=async()=>{ let f=inp.files[0]; if(!f) return; const okp=await confirmPhoto(f); inp.value=''; if(!okp) return; waitOn(kind==='cert'?'写真を送って読み取っています':'写真を送っています'); try{ f=await shrink(f); }catch(e){} const b64=await toB64(f); const fd={kind, data: b64, mime: f.type||'image/jpeg', cat: inp.dataset.cat||'', sub: sub||''}; try{ await flush(); const j=await api('upload',fd); if((fd.cat||fd.sub) && (j.cert.cat||'')!==fd.cat){ await api('cert_update',{id:j.cert.id, cat:fd.cat, sub:fd.sub}); } /* サーバーが古い版でも種類が付くように */ localPhotos[j.cert.file]='data:'+fd.mime+';base64,'+b64; await render(); waitOff(); }catch(e){ waitOff(); alert(e.message); } });
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(!confirm('この写真を削除しますか？')) return; const id=b.dataset.del; queueCall('cert_update',{id, status:'deleted'}, ()=>{ R.certs.forEach(c=>{ if(c.id===id) c.status='deleted'; }); }); render(); });
 }
 const catNames = {life:'一般の生命保険', kaigo:'介護医療保険', nenkin:'個人年金保険', jishin:'地震保険', old_songai:'旧長期損害保険', kokumin_nenkin:'国民年金', kyosai:'小規模企業共済', ideco:'iDeCo', jutaku:'住宅ローン年末残高'};
 function certCard(c){
   const img=`<img class="photo" data-photo="${esc(c.file)}" alt="">`;
-  if (c.status==='read_failed' || (c.status==='uploaded' && R.config.ai===false)) return `<div class="it" style="display:block">${img}<p class="note">${c.status==='read_failed'?'自動で読み取れませんでした。':'写真を保存しました。'}金額を入力してください。</p>${itemsForm(c)}<div class="btns"><button type="button" class="b3" data-del="${c.id}">削除</button><button type="button" class="b1" data-ok="${c.id}">保存</button></div></div>`;
+  if (c.status==='read_failed' || (c.status==='uploaded' && R.config.ai===false)) return `<div class="it" style="display:block">${img}<p class="note">${c.status==='read_failed'?'自動で読み取れませんでした。写真の向き（上下）と光の反射を確かめて撮り直すか、':'写真を保存しました。'}下に金額を入力してください。</p>${itemsForm(c)}<div class="btns"><button type="button" class="b3" data-del="${c.id}">削除</button><button type="button" class="b1" data-ok="${c.id}">保存</button></div></div>`;
   if (c.status==='read' && !c.confirmed) return `<div class="it" style="display:block">${img}<p><b>読み取り結果</b> ${esc(c.issuer||'')}</p>${(c.ai&&c.ai.year&&Number(c.ai.year)!==YEAR)?`<div class="err">この証明書は ${esc(c.ai.year)}年分のようです。今年（${YEAR}年）分のはがきか確かめてください。</div>`:''}${(c.ai&&c.ai.doc_type==='other')?`<div class="err">控除証明書ではないようです（お知らせ・通知など）。控除証明書を撮り直してください。</div>`:''}${itemsForm(c)}<p class="note">証明書と見比べて、違う所があれば直してから保存してください。</p><div class="btns"><button type="button" class="b3" data-del="${c.id}">削除</button><button type="button" class="b1" data-ok="${c.id}">この内容で保存</button></div></div>`;
   return `<div class="it"><div><b>${esc(c.issuer||catNames[c.cat]||'証明書')}</b> <span class="tag">確認済み</span><small>${(c.items||[]).map(i=>`${catNames[i.category]||i.category}${i.contract==='old'?'（旧）':i.contract==='new'?'（新）':''} ${yen(i.amount)}`).join('、')||'金額なし'}</small></div><button type="button" class="b3" data-reopen="${c.id}">直す</button></div>`;
 }
 function itemsForm(c){ const items=(c.items&&c.items.length)?c.items:[{category:c.cat==='jishin'?'jishin':c.cat==='kyosai'?'kyosai':c.cat==='jutaku'?'jutaku':'life', contract:'new', amount:''}]; return `<div id="items_${c.id}">${items.map((it,i)=>itemRow(c,it,i)).join('')}</div><button type="button" class="b3" style="font-size:13px;padding:6px 10px" onclick="document.getElementById('items_${c.id}').insertAdjacentHTML('beforeend', itemRow(${JSON.stringify({id:c.id,cat:c.cat}).replace(/"/g,'&quot;')},{category:'life',contract:'new',amount:''},99))">＋ 区分を足す</button>`; }
-window.itemRow = (c,it,i)=>{ const opts = c.cat==='jishin'? ['jishin','old_songai'] : c.cat==='kyosai'? ['kyosai','ideco'] : c.cat==='jutaku'? ['jutaku'] : c.cat==='kokumin'? ['kokumin_nenkin'] : ['life','kaigo','nenkin']; const low=it.confidence==='low'; return `${it.label?`<div class="note" style="margin-top:8px">読み取った欄：${esc(it.label)}</div>`:''}<div class="row itr" style="margin-top:6px"><select name="cat">${opts.map(o=>`<option value="${o}" ${it.category===o?'selected':''}>${catNames[o]}</option>`).join('')}</select>${c.cat==='life'||!c.cat?`<select name="ctr" style="flex:0 0 80px"><option value="new" ${it.contract!=='old'?'selected':''}>新</option><option value="old" ${it.contract==='old'?'selected':''}>旧</option></select>`:`<input type="hidden" name="ctr" value="">`}<div class="yen" style="flex:0 0 130px"><input type="tel" name="amt" value="${esc(it.amount||'')}" style="${low?'border-color:var(--red)':''}"></div></div>${low?'<div class="err">数字がはっきり読めませんでした。証明書で確かめてください</div>':''}${c.cat==='jutaku'?`<label>居住開始年月日</label><input type="date" name="sd" value="${esc(it.start_date||'')}"><div class="note">前年と同じなら空のままで結構です</div>`:''}`; };
+window.itemRow = (c,it,i)=>{ const opts = c.cat==='jishin'? ['jishin','old_songai'] : c.cat==='kyosai'? ['kyosai','ideco'] : c.cat==='jutaku'? ['jutaku'] : c.cat==='kokumin'? ['kokumin_nenkin'] : ['life','kaigo','nenkin']; const low=it.confidence==='low'; return `${it.label?`<div class="note" style="margin-top:8px">読み取った欄：${esc(it.label)}</div>`:''}<div class="row itr" style="margin-top:6px"><select name="cat">${opts.map(o=>`<option value="${o}" ${it.category===o?'selected':''}>${catNames[o]}</option>`).join('')}</select>${c.cat==='life'||!c.cat?`<select name="ctr" style="flex:0 0 80px"><option value="new" ${it.contract!=='old'?'selected':''}>新</option><option value="old" ${it.contract==='old'?'selected':''}>旧</option></select>`:`<input type="hidden" name="ctr" value="">`}<div class="yen" style="flex:0 0 130px"><input type="tel" name="amt" value="${esc(it.amount||'')}" style="${low?'border-color:var(--red)':''}"></div>${i>0?`<button type="button" class="rmx" onclick="rmItr(this)">×</button>`:''}</div>${low?'<div class="err">数字がはっきり読めませんでした。証明書で確かめてください</div>':''}${c.cat==='jutaku'?`<label>居住開始年月日</label><input type="date" name="sd" value="${esc(it.start_date||'')}"><div class="note">前年と同じなら空のままで結構です</div>`:''}`; };
 function bindCertCards(){
-  document.querySelectorAll('[data-ok]').forEach(b=>b.onclick=async()=>{ const id=b.dataset.ok; const rows=[...document.querySelectorAll(`#items_${id} .itr`)]; const items=rows.map(r=>({category:r.querySelector('[name=cat]').value, contract:r.querySelector('[name=ctr]').value, amount:Number(r.querySelector('[name=amt]').value.replace(/[^\d]/g,''))||0, start_date: r.parentElement.querySelector('[name=sd]')?.value||''})).filter(x=>x.amount>0||x.category==='jutaku'); if(!items.length){ alert('金額を入れてください'); return; } waitOn('保存しています'); try{ await api('cert_update',{id, items, status:'confirmed', confirmed:true}); await render(); }catch(e){ alert(e.message); } waitOff(); });
+  document.querySelectorAll('[data-ok]').forEach(b=>b.onclick=async()=>{ const id=b.dataset.ok; const rows=[...document.querySelectorAll(`#items_${id} .itr`)]; const items=rows.map(r=>({category:r.querySelector('[name=cat]').value, contract:r.querySelector('[name=ctr]').value, amount:Number(r.querySelector('[name=amt]').value.replace(/[^\d]/g,''))||0, start_date: r.parentElement.querySelector('[name=sd]')?.value||''})).filter(x=>x.amount>0||x.category==='jutaku'); if(!items.length){ alert('金額を入れてください'); return; } queueCall('cert_update',{id, items, status:'confirmed', confirmed:true}, ()=>{ R.certs.forEach(c=>{ if(c.id===id){ c.items=items; c.status='confirmed'; c.confirmed=true; } }); }); render(); });
   document.querySelectorAll('[data-reopen]').forEach(b=>b.onclick=async()=>{ await api('cert_update',{id:b.dataset.reopen, status:'read'}); render(); });
 }
 
