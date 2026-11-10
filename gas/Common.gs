@@ -92,14 +92,14 @@ function jsonLoad(folder, name, def) {
   var f = fileIn(folder, name);
   if (!f) return def === undefined ? null : def;
   var s = f.getBlob().getDataAsString('UTF-8');
-  try { var v = JSON.parse(s); cachePut(ck, s, 3600); return v; } catch (e) { return def === undefined ? null : def; }
+  try { var v = JSON.parse(s); cachePut(ck, s, 21600); return v; } catch (e) { return def === undefined ? null : def; }
 }
 function jsonSave(folder, name, obj) {
   var s = JSON.stringify(obj, null, 1);
   var f = fileIn(folder, name);
   if (f) f.setContent(s);
   else { f = folder.createFile(name, s, 'application/json'); cachePut('file:' + folder.getId() + '/' + name, f.getId(), 21600); }
-  cachePut('json:' + folder.getId() + '/' + name, s, 3600);
+  cachePut('json:' + folder.getId() + '/' + name, s, 21600);
   return f;
 }
 function fileDelete(folder, name) { var f = fileIn(folder, name); if (f) { f.setTrashed(true); cacheDel('file:' + folder.getId() + '/' + name); cacheDel('json:' + folder.getId() + '/' + name); } }

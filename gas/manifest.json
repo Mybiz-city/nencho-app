@@ -1,6 +1,6 @@
 {
- "version": "20261109-1925",
- "note": "画面をGitHub Pagesに置けるように（上部の帯を消す）：doPostの窓口、画面URLの設定",
+ "version": "20261110-2053",
+ "note": "事務所画面の一覧：初回の集計作りで30回書いていたのを1回に。読み込みの一時保存を6時間に延長",
  "files": [
   "Admin.gs",
   "AdminPage.html",

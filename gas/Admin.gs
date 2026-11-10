@@ -26,14 +26,15 @@ function adminApi(a, p) {
   switch (a) {
     case 'home': {
       var y = yearOf(p); var ix = indexLoad(), names = clientsLoad(), keys = jsonLoad(rootFolder(), '_company_keys.json', {});
-      var years = {}; var rows = []; var home = jsonLoad(rootFolder(), '_home.json', {}); var hy = home[String(y)] || {};
+      var years = {}; var rows = []; var home = jsonLoad(rootFolder(), '_home.json', {}); var hy = home[String(y)] || {}; var dirty = false;
       Object.keys(ix).sort().forEach(function (cl) {
         (ix[cl].years || []).forEach(function (yy) { years[yy] = 1; });
         if ((ix[cl].years || []).indexOf(String(y)) < 0) return;
         var hc = hy[cl];
-        if (!hc) { hc = homeCounts(summaryLoad(cl, y)); hy[cl] = hc; home[String(y)] = hy; jsonSave(rootFolder(), '_home.json', home); } // 古いデータの初回だけ作る
+        if (!hc) { hc = homeCounts(summaryLoad(cl, y)); hy[cl] = hc; dirty = true; } // 古いデータの初回だけ作る
         rows.push({ client: cl, name: names[cl] || '', n: hc.n, cnt: hc.cnt, key: !!(keys[cl] && keys[cl].key) });
       });
+      if (dirty) { home[String(y)] = hy; jsonSave(rootFolder(), '_home.json', home); } // 書くのは最後に1回だけ
       return { ok: true, year: y, cur_year: c.year, years: Object.keys(years).sort().reverse(), rows: rows, clients_total: Object.keys(names).length,
         zipdict: zipDictMeta(), totp: !!c.admin_totp_secret, backup_left: jsonLoad(rootFolder(), '_backup_codes.json', []).length, version: c.version, url: pageUrl('emp'), admin_url: pageUrl('admin'),
         settings: { year: c.year, pages_url: c.pages_url, app_name: c.app_name, deadline_text: c.deadline_text, ai: !!c.anthropic_api_key, model: c.anthropic_model, liff_id: c.liff_id, github_repo: c.github_repo, root_url: rootFolder().getUrl() } };
