@@ -38,13 +38,23 @@ function cfg() {
 function setProp(k, v) { PropertiesService.getScriptProperties().setProperty(k, String(v)); cfg._c = null; }
 
 // ---------- ドライブ ----------
+/** フォルダの「引換券」。IDだけ持ち、本当にドライブへ取りに行くのは中身を触るときだけ（一時保存に当たれば通信ゼロ） */
+function lazyFolder(id) {
+  var real = null; function r() { return real || (real = DriveApp.getFolderById(id)); }
+  var o = { getId: function () { return id; }, getUrl: function () { return 'https://drive.google.com/drive/folders/' + id; } };
+  ['getName', 'setName', 'getFoldersByName', 'getFilesByName', 'getFolders', 'getFiles', 'createFolder', 'createFile', 'setTrashed', 'isTrashed', 'getParents'].forEach(function (m) {
+    o[m] = function () { var x = r(); return x[m].apply(x, arguments); };
+  });
+  return o;
+}
 function rootFolder() {
+  if (rootFolder._f) return rootFolder._f;
   var id = cfg().root_folder_id;
-  if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} }
+  if (id) return (rootFolder._f = lazyFolder(id));
   var it = DriveApp.getRootFolder().getFoldersByName('年調アプリデータ');
   var f = it.hasNext() ? it.next() : DriveApp.createFolder('年調アプリデータ');
   setProp('ROOT_FOLDER_ID', f.getId());
-  return f;
+  return (rootFolder._f = lazyFolder(f.getId()));
 }
 var _cache = CacheService.getScriptCache();
 function cacheGet(k) { try { return _cache.get(k); } catch (e) { return null; } }
@@ -55,7 +65,7 @@ function cacheDel(k) { try { _cache.remove(k); } catch (e) {} }
 function subFolder(parent, name, create) {
   var key = 'fid:' + parent.getId() + '/' + name;
   var id = cacheGet(key);
-  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { cacheDel(key); } }
+  if (id) return lazyFolder(id);
   var it = parent.getFoldersByName(name);
   var f = null;
   if (it.hasNext()) f = it.next();
@@ -112,12 +122,19 @@ function withLock(fn) {
 }
 
 // ---------- 監査ログ ----------
+/** 記録。毎回ファイルを書くと遅いので、いったんプロパティにためて、たまったらファイルへ移す */
 function audit(what) {
   try {
-    var root = rootFolder(); var name = '_audit_' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMM') + '.log';
-    var f = fileIn(root, name); var line = nowIso() + '\t' + what + '\n';
-    if (f) f.setContent(f.getBlob().getDataAsString('UTF-8') + line); else root.createFile(name, line, 'text/plain');
+    var p = PropertiesService.getScriptProperties();
+    var buf = (p.getProperty('AUDIT_BUF') || '') + nowIso() + '\t' + what + '\n';
+    if (buf.length > 3000) { auditFlush(buf); buf = ''; }
+    p.setProperty('AUDIT_BUF', buf);
   } catch (e) {}
+}
+function auditFlush(buf) {
+  var root = rootFolder(); var name = '_audit_' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMM') + '.log';
+  var f = fileIn(root, name);
+  if (f) f.setContent(f.getBlob().getDataAsString('UTF-8') + buf); else root.createFile(name, buf, 'text/plain');
 }
 function nowIso() { return Utilities.formatDate(new Date(), 'Asia/Tokyo', "yyyy-MM-dd'T'HH:mm:ssXXX"); }
 function today() { return Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd'); }

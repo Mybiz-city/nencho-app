@@ -31,13 +31,13 @@ const toB64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onl
 function msg(m){ const el=$('#msg'); if(!m){ el.style.display='none'; return; } el.textContent=m; el.style.display='block'; window.scrollTo(0,0); }
 function busy(on){ let b=$('#busy'); if(on){ if(!b){ b=document.createElement('div'); b.id='busy'; b.className='busy'; b.textContent=on===true?'処理中…':on; document.body.appendChild(b);} } else if(b) b.remove(); }
 function download(b64, name, mime){ const bin=atob(b64); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); const url=URL.createObjectURL(new Blob([u8],{type:mime||'application/octet-stream'})); const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },2000); }
-async function run(fn, okMsg){ busy(true); try{ const j=await fn(); msg(j.msg||okMsg||''); return j; }catch(e){ msg(e.message); throw e; } finally{ busy(false); } }
+async function run(fn, okMsg){ busy(true); Object.keys(memo).forEach(k=>delete memo[k]); try{ const j=await fn(); msg(j.msg||okMsg||''); return j; }catch(e){ msg(e.message); throw e; } finally{ busy(false); } }
 const stName = {submitted:'提出済み', in_progress:'入力中', new:'未着手'};
 const dt = s => s ? new Date(s).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
 let state = { year: null };
 
 // ---------- ログイン ----------
-async function loginView(){
+async function loginView(){ ++viewSeq;
   const info = await api('login_info').catch(()=>({totp:true}));
   $('#hr').innerHTML=''; $('#view').innerHTML = `<div class="card" style="max-width:380px;margin:40px auto"><h2>事務所画面</h2><input type="password" id="pw" placeholder="パスワード" style="width:100%;font-size:18px;box-sizing:border-box">${info.totp?'<input type="tel" id="otp" placeholder="認証アプリの6桁（またはバックアップコード）" inputmode="numeric" style="width:100%;font-size:18px;margin-top:8px;box-sizing:border-box">':''}<button id="lg" style="width:100%;font-size:18px;margin-top:10px">ログイン</button><p class="err" id="lerr" style="color:#C8372D"></p></div>`;
   $('#lg').onclick = async()=>{ try{ await api('login',{pw:$('#pw').value, otp:$('#otp')?$('#otp').value:''}); home(); }catch(e){ $('#lerr').textContent=e.message; } };
@@ -48,9 +48,18 @@ async function logout(){ try{ await api('logout'); }catch(e){} T=''; sessionStor
 async function updateApp(){ if(!confirm('GitHubの最新版に更新します。よろしいですか？（1分ほどかかります）')) return; await run(()=>api('update')).catch(()=>{}); }
 
 // ---------- 一覧 ----------
+// 一度見た画面は手元の控えから先に描き、裏で最新を取って違えば差し替える（操作のあとは控えを捨てる）
+const memo = {}; let viewSeq = 0;
 async function home(y){
-  headerLinks(); $('#view').innerHTML='<div class="spin">読み込み中…</div>';
+  headerLinks(); const key='home:'+(y||state.year||''); const seq=++viewSeq; const prev=memo[key];
+  if (prev) renderHome(prev); else $('#view').innerHTML='<div class="spin">読み込み中…</div>';
   let j; try{ j = await api('home',{y: y||state.year||''}); }catch(e){ if(/ログイン/.test(e.message)) return loginView(); msg(e.message); return; }
+  memo[key]=j; memo['home:'+j.year]=j;
+  if (seq!==viewSeq) return;
+  if (prev && (JSON.stringify(prev)===JSON.stringify(j) || ($('#settings') && $('#settings').open))) return;
+  renderHome(j);
+}
+function renderHome(j){
   state.year = j.year; const ro = j.year !== j.cur_year; $('#ver').textContent = j.version ? '版: '+j.version : '';
   const s = j.settings;
   let h = `<div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><div><b>対象年：${j.year}年分</b>${ro?'　<span class="st">閲覧のみ</span>':''}　<small>切り替え：${j.years.map(yy=>`<a onclick="home(${yy})" style="${yy==j.year?'font-weight:700':''}">${yy}</a>`).join(' ')||'—'}</small></div>
@@ -98,8 +107,14 @@ async function auditView(){ const j=await api('audit_tail'); $('#audit').innerHT
 
 // ---------- 顧問先 ----------
 async function client(cl){
-  $('#view').innerHTML='<div class="spin">読み込み中…</div>';
+  const key='client:'+cl+':'+state.year; const seq=++viewSeq; const prev=memo[key];
+  if (prev) renderClient(prev); else $('#view').innerHTML='<div class="spin">読み込み中…</div>';
   const j = await api('client',{client:cl, y:state.year}).catch(e=>{ msg(e.message); return null; }); if(!j) return;
+  memo[key]=j; if (seq!==viewSeq) return;
+  if (prev && JSON.stringify(prev)===JSON.stringify(j)) return;
+  renderClient(j);
+}
+function renderClient(j){
   const ro = j.year !== j.cur_year; const cnt={submitted:0,in_progress:0,new:0,retired:0}; j.rows.forEach(r=>{ if(r.roster==='retired') cnt.retired++; else cnt[r.status]=(cnt[r.status]||0)+1; });
   let h = `<p><a onclick="home()">← 顧問先の一覧</a></p><div class="card"><h2>${j.client} ${esc(j.name)}　<small>${j.year}年分　提出 ${cnt.submitted} ／ 入力中 ${cnt.in_progress} ／ 未着手 ${cnt.new} ／ 退職 ${cnt.retired}</small></h2>
   <p><button onclick="exportCsv('${j.client}',false,false)">提出済みをCSVで出す</button> <button class="g" onclick="exportCsv('${j.client}',true,false)">全員分を出す</button> <button class="g" onclick="photosZip('${j.client}')">写真をまとめて保存</button>　<small>CSVは年調項目の列だけを出します（給与実績・口座は含めない）。540列すべてが要る場合：<a onclick="exportCsv('${j.client}',false,true)">全列で出す</a></small></p>
@@ -115,7 +130,7 @@ async function photosZip(cl){ await run(async()=>{ const j=await api('photos_zip
 
 // ---------- 従業員 ----------
 async function emp(cl, e){
-  $('#view').innerHTML='<div class="spin">読み込み中…</div>';
+  ++viewSeq; $('#view').innerHTML='<div class="spin">読み込み中…</div>';
   const j = await api('emp',{client:cl, emp:e, y:state.year}).catch(er=>{ msg(er.message); return null; }); if(!j) return;
   const r=j.record, a=r.answers||{}, p=r.prev||{}, c=r.computed, t=r.totals;
   const name = a.name || ((p.sei||'')+' '+(p.mei||''));
