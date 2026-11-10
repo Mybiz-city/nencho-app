@@ -95,6 +95,7 @@ function empApi(a, p) {
       var pd = photosDir(empDir(w2.client, w2.emp, true), true);
       var file = pd.createFile(Utilities.newBlob(bytes, mime, name));
       var entry = { id: id, kind: kind, file: name, file_id: file.getId(), at: nowIso(), status: 'uploaded', items: [], ai: null };
+      if (p.cat) entry.cat = String(p.cat).replace(/[^a-z_]/g, ''); if (p.sub) entry.sub = String(p.sub).replace(/[^a-z_]/g, '');
       if (kind === 'techo' && cfg().anthropic_api_key) {
         try { var ai = claudeReadCert(p.data, mime, 'techo'); entry.ai = ai; entry.status = 'read';
           var t = ai.techo || {}; var txt = ((t.type || '') + ' ' + (t.grade || '')).trim();
