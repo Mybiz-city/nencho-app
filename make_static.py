@@ -20,7 +20,12 @@ def wr(n, s): open(os.path.join(out, n), 'w', encoding='utf-8').write(s)
 s = rd('EmpPage.html')
 s = s.replace('<?= cfg.app_name ?>', 'メーティス 年末調整').replace('<?= cfg.brand_color ?>', '#00A88E')
 s = s.replace('<?!= JSON.stringify(cfg.liff_id) ?>', '(window.NENCHO.liff_id || "")').replace('<?= cfg.year ?>', '(window.NENCHO.year)')
-s = s.replace('<head>', '<head>' + SHIM, 1)
+# 判定ロジック（Judge.gs）を画面にも同梱：扶養・配偶者の区分を手元で即時に出す。元は1つ（gas/Judge.gs）
+com = rd('Common.gs')
+tax = re.search(r'var TAX = \{.*?\};', com, re.S).group(0)
+helpers = '\n'.join(re.search(r'^function ' + n + r'\(.*$', com, re.M).group(0) for n in ['zenToHanDigits', 'yen', 'fmt'])
+JUDGE = '<script>(function(){\n' + tax + '\nfunction cfg(){ return { year: window.NENCHO.year, tax: TAX }; }\n' + helpers + '\n' + rd('Judge.gs') + '\nwindow.judgeCompute = compute;\n})();</script>'
+s = s.replace('<head>', '<head>' + SHIM + JUDGE, 1)
 assert '<?' not in s; wr('index.html', s)
 # 事務所
 s = rd('AdminPage.html').replace('<?= cfg.app_name ?>', 'メーティス 年末調整').replace('<head>', '<head>' + SHIM, 1)
