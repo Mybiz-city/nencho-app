@@ -232,7 +232,7 @@ function buildSteps(){
 
   // 5 確認
   s.push({id:'r_cmp', sec:5, title:'内容の確認', html:()=>compareHtml(), nextLabel:'この内容で提出する', next: async()=>{ waitOn('提出しています'); try{ await flush(); await api('submit'); } finally { waitOff(); } }});
-  s.push({id:'r_done', sec:5, title:'提出しました', html:()=>`<div class="fin"><div class="ok">✓</div><h2>提出が完了しました</h2><p>${R.submitted_at? new Date(R.submitted_at).toLocaleString('ja-JP'):''}</p><p class="note">内容を直したいときは、もう一度このアプリを開いて進めば、再提出できます。<br>控除証明書の原本は、会社の指示に従って提出してください。</p></div>`, last:true});
+  s.push({id:'r_done', sec:5, title:'提出しました', html:()=>`<div class="fin"><div class="ok">✓</div><h2>提出が完了しました</h2><p>${R.submitted_at? new Date(R.submitted_at).toLocaleString('ja-JP'):''}</p><p class="note">内容を直したいときは、もう一度このアプリを開いて進めば、再提出できます。<br>控除証明書の原本は、会社の指示に従って提出してください。</p><p class="note" style="margin-top:18px">会社のパソコンや家族のスマホなど、<b>ご自分のもの以外の端末</b>で入力した方は、ここでログアウトしてください。</p><button type="button" class="b3" onclick="doLogout()">ログアウト</button></div>`, last:true});
   return s;
 }
 
@@ -395,9 +395,10 @@ async function render(){
 }
 $('#next').onclick = async()=>{ const st=steps[idx]; $('#next').disabled=true; try{ await st.next(); const ns=buildSteps(); const i=ns.findIndex(x=>x.id===st.id); idx = i>=0 ? i+1 : idx; render(); }catch(e){ $('#err').textContent=e.message; } $('#next').disabled=false; };
 $('#back').onclick = ()=>{ if(idx>0){ idx--; render(); } };
-$('#menu').onclick = ()=>{ const m=document.createElement('div'); m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:20;display:flex;align-items:flex-end'; m.innerHTML=`<div class="card" style="width:100%;margin:0;border-radius:14px 14px 0 0"><h2>メニュー</h2><button type="button" class="b2" style="width:100%;margin-bottom:8px" id="m_top">最初の画面に戻る（入力は残る）</button><button type="button" class="b3" style="width:100%;margin-bottom:8px;color:var(--red)" id="m_reset">今年の入力をすべて消してやり直す</button><button type="button" class="b3" style="width:100%" id="m_close">閉じる</button></div>`; document.body.appendChild(m);
+$('#menu').onclick = ()=>{ const m=document.createElement('div'); m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:20;display:flex;align-items:flex-end'; m.innerHTML=`<div class="card" style="width:100%;margin:0;border-radius:14px 14px 0 0"><h2>メニュー</h2><button type="button" class="b2" style="width:100%;margin-bottom:8px" id="m_top">最初の画面に戻る（入力は残る）</button><button type="button" class="b3" style="width:100%;margin-bottom:8px;color:var(--red)" id="m_reset">今年の入力をすべて消してやり直す</button><button type="button" class="b3" style="width:100%;margin-bottom:8px" id="m_logout">ログアウト</button><button type="button" class="b3" style="width:100%" id="m_close">閉じる</button></div>`; document.body.appendChild(m);
   m.querySelector('#m_close').onclick=()=>m.remove(); m.onclick=e=>{ if(e.target===m) m.remove(); };
   m.querySelector('#m_top').onclick=()=>{ m.remove(); idx=0; render(); };
+  m.querySelector('#m_logout').onclick=async()=>{ m.remove(); doLogout(); };
   m.querySelector('#m_reset').onclick=async()=>{ if(!confirm('今年に入力した内容と写真をすべて消します。前年の登録は残ります。よろしいですか？')) return; await api('reset'); m.remove(); idx=0; toast('消しました。最初から入力できます'); render(); }; };
 async function shrink(file){ // 送る前に長辺1600pxのJPEGに縮める（通信量と読み取り費用を抑える）
   if(!/^image\//.test(file.type)) return file; let bmp; try{ bmp=await createImageBitmap(file,{imageOrientation:'from-image'}); }catch(e){ bmp=await createImageBitmap(file); } const s=Math.min(1, 1600/Math.max(bmp.width,bmp.height)); if(s===1&&file.size<1500000) return file;
@@ -412,6 +413,8 @@ function showIncomeHelp(){ const m=document.createElement('div'); m.style.cssTex
 function toast(m){ const t=document.createElement('div'); t.textContent=m; t.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:10px;z-index:9;font-size:14px;max-width:90%'; document.body.appendChild(t); setTimeout(()=>t.remove(),3500); }
 
 // ---------- 入口 ----------
+// ログアウト：この端末の合鍵を捨てる。入力内容はサーバーに残る
+window.doLogout = async () => { if(!confirm('ログアウトします。入力した内容は保存されています。次に開くときは、登録コードと初回番号をもう一度入れてください。')) return; waitOn('ログアウトしています'); try{ await flush(); await api('unbind'); }catch(e){} try{ localStorage.removeItem(DEVKEY); }catch(e){} sessionStorage.removeItem('nencho_t'); TOKEN=''; waitOff(); $('#menu').style.display='none'; $('#who').textContent=''; loginView('ログアウトしました'); };
 function loginView(msg){
   $('#nav').style.display='none';
   view.innerHTML = `<div class="card"><h1>登録コードを入力</h1><p>会社または事務所から配られた<b>登録コード</b>を入れてください。このスマホで初めて開くときだけ必要です。</p><input type="tel" id="code" inputmode="numeric" placeholder="例：0302000001" style="font-size:24px;letter-spacing:.08em;text-align:center"><div class="note" style="text-align:center">数字だけ（10桁）。LINEやメールで届いたコードを貼り付けてください。</div><div id="lpin" style="display:none"><label>初回番号（会社から渡された6桁）</label><input type="tel" id="pin" inputmode="numeric" placeholder="例：123456" style="font-size:24px;letter-spacing:.2em;text-align:center"><div class="note">このスマホで初めて開くときに必要です。その後3日間は自動で入れます。番号は他の人に見せないでください。</div></div><div class="err" id="lerr">${esc(msg||'')}</div><div class="btns"><button class="b1" id="login">始める</button></div><p class="note" style="margin-top:14px">コードが分からないときは、お勤め先かメーティス税理士法人にお尋ねください。</p></div>`;
