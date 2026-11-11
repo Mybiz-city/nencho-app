@@ -29,6 +29,8 @@ function companyApi(a, p) {
     case 'add': {
       var name = String(p.name || '').trim(), kana = String(p.kana || '').trim(), birth = String(p.birth || ''), hire = String(p.hire || ''), sex = String(p.sex || '');
       if (!name) throw new Error('氏名を入れてください');
+      if (!kana) throw new Error('フリガナを入れてください');
+      if (!/^\d{4}-\d{2}/.test(hire)) throw new Error('入社日の年と月を選んでください');
       var emp2, yd2 = pathFolder([client, String(year)], true);
       var ro2 = { status: 'active', hire: hire, retire: '', added_by: 'company', added_at: nowIso(), name: name, kana: kana, birth: birth, sex: sex, pin: randomDigits(6), pin_used: false, pin_issued_at: nowIso() };
       withLock(function () { // 番号の取り合いを防ぐため、番号決め〜集計の反映までを1人ずつ
@@ -79,7 +81,7 @@ function companyApi(a, p) {
       var e5 = String(p.emp || ''), nm5 = String(p.name || '').trim(); if (!nm5) throw new Error('氏名を入れてください');
       var ed5 = empDir(client, e5, false); var ro5 = ed5 ? jsonLoad(ed5, 'roster.json', {}) : null;
       if (!ro5 || !ro5.added_by) throw new Error('直せるのは、この画面で追加した方だけです');
-      ro5.name = nm5; ro5.kana = String(p.kana || '').trim(); ro5.updated_at = nowIso(); jsonSave(ed5, 'roster.json', ro5);
+      ro5.name = nm5; if (String(p.kana || '').trim()) ro5.kana = String(p.kana).trim(); ro5.updated_at = nowIso(); jsonSave(ed5, 'roster.json', ro5);
       var r5 = jsonLoad(ed5, 'answers.json'); if (r5 && !r5.submitted_at) { r5.answers = r5.answers || {}; r5.answers.name = nm5; if (ro5.kana) r5.answers.kana = ro5.kana; jsonSave(ed5, 'answers.json', r5); }
       var o5 = {}; o5[e5] = summaryRowFrom(e5, r5, null, ro5); summaryMerge(client, year, o5);
       return { ok: true, msg: '氏名を直しました', rows: companyRows(client) };

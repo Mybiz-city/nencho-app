@@ -15,7 +15,7 @@ let csv = '氏名,生年月日,入社日\n'; for (let i = 0; i < 50; i++) csv +=
 ctx.__csv = csv; ctx.__b64 = Buffer.from(csv).toString('base64');
 console.log(measure('会社CSV 50人追加', ctx, 'JSON.stringify((function(){ var r=companyApi("bulk",{c:"9999",k:"k",b64:__b64,text:__csv}); return r.msg; })())'));
 console.log(measure('会社CSV 同じ50人を再読込（更新）', ctx, 'JSON.stringify(companyApi("bulk",{c:"9999",k:"k",b64:__b64,text:__csv}).msg)'));
-measure('会社 1人追加', ctx, 'companyApi("add",{c:"9999",k:"k",name:"単独 太郎"}).ok');
+measure('会社 1人追加', ctx, 'companyApi("add",{c:"9999",k:"k",name:"単独 太郎",kana:"タンドク タロウ",hire:"2026-04"}).ok');
 measure('会社ページ 一覧', ctx, 'companyApi("list",{c:"9999",k:"k"}).rows.length');
 console.log('summary人数', vm.runInContext('Object.keys(summaryLoad("9999")).length', ctx));
 // 追加した人が従業員画面で名前を引き継ぐか

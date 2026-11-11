@@ -35,7 +35,7 @@ textarea{width:100%;box-sizing:border-box;font-size:15px;padding:8px;border:1px 
 <p class="note">｛ ｝で囲んだ言葉は、送るときにその人の内容に置き換わります：<b>{氏名}　{URL}　{登録コード}　{暗証番号}　{期限}</b>。この5つ以外は自由に書き換えられます。</p>
 <div class="row"><button onclick="saveTpl()">案内文を保存</button><button class="g" onclick="resetTpl()">元の文に戻す</button></div></div></details>
 <div class="card"><h2>一覧にない従業員を追加する</h2>
-<div class="row"><label>氏名<br><input type="text" id="a_name" placeholder="山田 太郎"></label><label>フリガナ（分かれば）<br><input type="text" id="a_kana" placeholder="ヤマダ タロウ"></label><label>入社日（分かれば）<br><span id="a_hire"></span></label></div>
+<div class="row"><label>氏名<br><input type="text" id="a_name" placeholder="山田 太郎"></label><label>フリガナ<br><input type="text" id="a_kana" placeholder="ヤマダ タロウ"></label><label>入社日（年・月は必須。日は分かれば）<br><span id="a_hire"></span></label></div>
 <div class="row"><button onclick="add()">追加する</button></div><p class="note">生年月日や住所などは、本人がスマホで入力します。追加すると、登録コードと暗証番号がすぐに一覧に出ます。</p></div>
 <details class="card"><summary style="cursor:pointer;color:#007A67;font-weight:700">人数が多い場合：CSVでまとめて更新（表計算ソフトに慣れた方向け）</summary><div style="margin-top:10px"><input type="file" id="bulk" accept=".csv,.CSV">　<button class="sm" onclick="bulk()">読み込む</button>
 <p class="note">Excelで作った表をCSVで保存して上げてください。1行目は見出し：<b>氏名、生年月日</b>（必須）、入社日、退職日、フリガナ、性別（任意）。氏名と生年月日が同じ人は更新、いない人は追加します。社員番号は不要です（事務所側で決めます）。</p></div></details>
@@ -50,7 +50,7 @@ function msg(m){ const el=$('#msg'); el.textContent=m; el.style.display=m?'block
 const eras=[['令',2019],['平',1989],['昭',1926],['大',1912],['明',1868]];
 function yl(y){ for(const [g,e] of eras){ if(y>=e){ const n=y-e+1; return y+'年（'+g+(n===1?'元':n)+'）'; } } return y+'年'; }
 function dsel(id,val,y0,y1){ const [y,m,d]=(val||'').split('-').map(Number); let h='<span class="dsel" id="'+id+'"><select class="y"><option value="">年</option>'; for(let i=y1;i>=y0;i--) h+='<option value="'+i+'"'+(i===y?' selected':'')+'>'+yl(i)+'</option>'; h+='</select><select class="m"><option value="">月</option>'; for(let i=1;i<=12;i++) h+='<option value="'+i+'"'+(i===m?' selected':'')+'>'+i+'月</option>'; h+='</select><select class="d"><option value="">日</option>'; for(let i=1;i<=31;i++) h+='<option value="'+i+'"'+(i===d?' selected':'')+'>'+i+'日</option>'; h+='</select></span>'; return h; }
-function dval(id){ const el=document.getElementById(id); const y=el.querySelector('.y').value,m=el.querySelector('.m').value,d=el.querySelector('.d').value; return (y&&m&&d)? y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0') : ''; }
+function dval(id){ const el=document.getElementById(id); const y=el.querySelector('.y').value,m=el.querySelector('.m').value,d=el.querySelector('.d').value; return (y&&m&&d)? y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0') : (y&&m)? y+'-'+String(m).padStart(2,'0') : ''; } // 日が空なら年月まで
 const appName={submitted:'入力済み',in_progress:'入力中',new:'未入力'};
 // 従業員への案内文（会社ごとに編集できる）。送ったかどうかの印はこの端末だけに覚える
 let ROWS=[], INFO={}, TPL=''; let SENT={}; try{ SENT=JSON.parse(localStorage.getItem('nencho_sent_'+CTX.c)||'{}'); }catch(e){}
@@ -78,11 +78,11 @@ async function saveRow(i,emp){ try{ const j=await api('roster',{emp, status:$('#
 async function reissue(emp){ try{ const j=await api('pin_reissue',{emp}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
 // 追加：画面には先に出し、登録コードの発行は裏で順番に行う
 let addChain=Promise.resolve();
-function add(){ const name=$('#a_name').value.trim(), kana=$('#a_kana').value.trim(), hire=dval('ah'); if(!name){ msg('氏名を入れてください'); return; }
+function add(){ const name=$('#a_name').value.trim(), kana=$('#a_kana').value.trim(), hire=dval('ah'); if(!name){ msg('氏名を入れてください'); return; } if(!kana){ msg('フリガナを入れてください'); return; } if(!hire){ msg('入社日の年と月を選んでください'); return; }
   ROWS=ROWS.concat([{emp:'tmp'+Date.now(), name, hire, status:'active', app:'new', tmp:true, added:true}]); render(ROWS); $('#a_name').value=''; $('#a_kana').value=''; msg(name+' さんを追加しています…（続けて次の方を入力できます）');
   addChain=addChain.then(async()=>{ try{ const j=await api('add',{name, kana, hire}); msg(j.msg); render(j.rows.concat(ROWS.filter(r=>r.tmp).slice(1))); }catch(e){ ROWS=ROWS.filter(r=>!(r.tmp&&r.name===name)); render(ROWS); msg(name+' さんを追加できませんでした：'+e.message); } }); }
-async function editRow(i){ const w=ROWS[i]; const name=prompt('氏名を直してください', w.name); if(name===null) return; if(!name.trim()){ msg('氏名を入れてください'); return; } try{ const j=await api('edit',{emp:w.emp, name:name.trim(), kana:''}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
-async function removeRow(i){ const w=ROWS[i]; if(!confirm(w.name+' さんを一覧から削除します。この方の登録コードと暗証番号は使えなくなります。よろしいですか？')) return; try{ const j=await api('remove',{emp:w.emp}); delete SENT[w.emp]; msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
+async function editRow(i){ const w=ROWS[i]; const name=prompt('氏名を直してください', w.name); if(name===null) return; if(!name.trim()){ msg('氏名を入れてください'); return; } try{ const j=await api('edit',{emp:w.emp, name:name.trim()}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
+async function removeRow(i){ const w=ROWS[i]; if(!confirm(w.name+' さんを一覧から削除します。この方の登録コードと暗証番号は使えなくなります。よろしいですか？')) return; const before=ROWS; ROWS=ROWS.filter(r=>r!==w); render(ROWS); msg(w.name+' さんを削除しています…'); try{ const j=await api('remove',{emp:w.emp}); delete SENT[w.emp]; msg(j.msg); render(j.rows.concat(ROWS.filter(r=>r.tmp))); }catch(e){ render(before); msg(e.message); } }
 // CSVは画面側で文字コードを直し、10人ずつに小分けして送る（途中経過を出す。長い処理で止まらないように）
 function decodeCsv(buf){ try{ return new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch(e){ return new TextDecoder('shift_jis').decode(buf); } }
 async function bulk(){ const f=$('#bulk').files[0]; if(!f){ msg('CSVを選んでください'); return; }
