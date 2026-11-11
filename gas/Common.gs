@@ -201,11 +201,13 @@ function fmt(n) { return (Number(n) || 0).toLocaleString('ja-JP'); }
 var ERA = { '明': 1867, 'M': 1867, '大': 1911, 'T': 1911, '昭': 1925, 'S': 1925, '平': 1988, 'H': 1988, '令': 2018, 'R': 2018 };
 /** 和暦文字列（昭60/03/29, 令08/01/01, 平29.12.7, 1985-03-29）→ Y-m-d */
 function warekiToIso(s) {
-  if (!s) return null; s = zenToHanDigits(String(s).trim());
-  var m = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+  if (!s) return null; s = zenToHanDigits(String(s).trim()).replace(/\s+/g, '');
+  s = s.replace(/^明治/, '明').replace(/^大正/, '大').replace(/^昭和/, '昭').replace(/^平成/, '平').replace(/^令和/, '令').replace(/元年/, '1年');
+  var m = s.match(/^(\d{4})[\/\-\.年](\d{1,2})[\/\-\.月](\d{1,2})日?$/);
   if (m) return pad4(m[1]) + '-' + pad2(m[2]) + '-' + pad2(m[3]);
-  m = s.match(/^([明大昭平令MTSHR])(\d{1,2})[\/\-\.年](\d{1,2})[\/\-\.月](\d{1,2})日?$/);
-  if (m && ERA[m[1]] !== undefined) return pad4(ERA[m[1]] + parseInt(m[2], 10)) + '-' + pad2(m[3]) + '-' + pad2(m[4]);
+  m = s.match(/^([明大昭平令MTSHRmtshr])(\d{1,2})[\/\-\.年](\d{1,2})[\/\-\.月](\d{1,2})日?$/);
+  if (m && ERA[m[1].toUpperCase()] !== undefined) return pad4(ERA[m[1].toUpperCase()] + parseInt(m[2], 10)) + '-' + pad2(m[3]) + '-' + pad2(m[4]);
+  m = s.match(/^(\d{4})(\d{2})(\d{2})$/); if (m) return m[1] + '-' + m[2] + '-' + m[3];
   return null;
 }
 function isoToWareki(iso) {
@@ -260,6 +262,11 @@ function homeCounts(s) { var cnt = { submitted: 0, in_progress: 0, 'new': 0, ret
 function homeUpdate(client, year, s) { var h = jsonLoad(rootFolder(), '_home.json', {}); h[String(year)] = h[String(year)] || {}; h[String(year)][client] = homeCounts(s); jsonSave(rootFolder(), '_home.json', h); }
 function summaryRow(client, emp, ed) {
   var r = jsonLoad(ed, 'answers.json'), p = jsonLoad(ed, 'prev.json'), ro = jsonLoad(ed, 'roster.json', {});
+  return summaryRowFrom(emp, r, p, ro);
+}
+/** 読み込み済みの中身から集計の1行を作る（ドライブに問い合わせない） */
+function summaryRowFrom(emp, r, p, ro) {
+  ro = ro || {};
   var a = (r && r.answers) || {};
   var certs = ((r && r.certs) || []).filter(function (c) { return c.status !== 'deleted'; }).length;
   return {
@@ -274,6 +281,22 @@ function summaryRow(client, emp, ed) {
     unknown_income: a.has_other_income === 'unknown', otsu: a.other_employer_decl === 'other',
     pending: /^N/.test(String((r && r.emp) || emp))
   };
+}
+/** 新しいフォルダを作る（無いと分かっているとき。探す問い合わせを省く） */
+function newSubFolder(parent, name) { var f = parent.createFolder(name); cachePut('fid:' + parent.getId() + '/' + name, f.getId(), 21600); return lazyFolder(f.getId()); }
+/** 新しいJSONファイルを作る（無いと分かっているとき） */
+function jsonCreate(folder, name, obj) {
+  var s = JSON.stringify(obj, null, 1); var f = folder.createFile(name, s, 'application/json');
+  cachePut('file:' + folder.getId() + '/' + name, f.getId(), 21600); cachePut('json:' + folder.getId() + '/' + name, s, 21600); return f;
+}
+/** 集計に何人分かをまとめて反映する（書き込みは1回）。rows = {個人コード: 行 または null（削除）} */
+function summaryMerge(client, year, rows) {
+  year = year || cfg().year; var cd = pathFolder([client, String(year)], true);
+  withLock(function () {
+    var s = jsonLoad(cd, '_summary.json', {});
+    for (var k in rows) { if (rows[k] === null) delete s[k]; else s[k] = rows[k]; }
+    jsonSave(cd, '_summary.json', s); homeUpdate(client, year, s);
+  });
 }
 /** 顧問先全員の集計を作り直す */
 function summaryRebuild(client, year) {
@@ -291,9 +314,9 @@ function indexLoad() { return jsonLoad(rootFolder(), '_index.json', {}); }
 function indexAdd(client, year) {
   withLock(function () {
     var ix = jsonLoad(rootFolder(), '_index.json', {});
+    if (ix[client] && (ix[client].years || []).indexOf(String(year)) >= 0) return; // 変わらなければ書かない
     ix[client] = ix[client] || { years: [] };
-    if (ix[client].years.indexOf(String(year)) < 0) ix[client].years.push(String(year));
-    ix[client].years.sort();
+    ix[client].years.push(String(year)); ix[client].years.sort();
     jsonSave(rootFolder(), '_index.json', ix);
   });
 }
@@ -320,7 +343,11 @@ function emptyRecord(client, emp) {
 function loadRecord(client, emp) {
   var ed = empDir(client, emp, true);
   var r = jsonLoad(ed, 'answers.json');
-  if (!r) { r = emptyRecord(client, emp); var prev = jsonLoad(ed, 'prev.json'); if (prev) r.prev = prev; }
+  if (!r) {
+    r = emptyRecord(client, emp); var prev = jsonLoad(ed, 'prev.json');
+    if (prev) r.prev = prev;
+    else { var ro0 = jsonLoad(ed, 'roster.json', {}); if (ro0.name) r.answers = { name: ro0.name, kana: ro0.kana || '', birth: ro0.birth || '', sex: ro0.sex || '' }; } // 会社が追加した人：名簿の氏名を引き継ぐ
+  }
   if (r.prev_answers === undefined) {
     var last = jsonLoad(empDir(client, emp, false, cfg().year - 1), 'answers.json');
     r.prev_certs = [];

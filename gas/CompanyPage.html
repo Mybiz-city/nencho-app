@@ -64,7 +64,14 @@ async function load(){ try{ const j=await api('list'); INFO=j.ctx||{}; render(j.
 async function saveRow(i,emp){ try{ const j=await api('roster',{emp, status:$('#st_'+i).value, hire:dval('hi_'+i), retire:dval('rt2_'+i)}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
 async function reissue(emp){ try{ const j=await api('pin_reissue',{emp}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
 async function add(){ try{ const j=await api('add',{name:$('#a_name').value, kana:$('#a_kana').value, hire:dval('ah')}); msg(j.msg); render(j.rows); $('#a_name').value=''; $('#a_kana').value=''; }catch(e){ msg(e.message); } }
-async function bulk(){ const f=$('#bulk').files[0]; if(!f){ msg('CSVを選んでください'); return; } try{ const j=await api('bulk',{b64: await toB64(f)}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
+// CSVは画面側で文字コードを直し、10人ずつに小分けして送る（途中経過を出す。長い処理で止まらないように）
+function decodeCsv(buf){ try{ return new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch(e){ return new TextDecoder('shift_jis').decode(buf); } }
+async function bulk(){ const f=$('#bulk').files[0]; if(!f){ msg('CSVを選んでください'); return; }
+  try{ const lines=decodeCsv(await f.arrayBuffer()).replace(/^\uFEFF/,'').split(/\r\n|\n|\r/).filter(l=>l.trim()!==''); if(lines.length<2){ msg('データの行がありません'); return; }
+    const head=lines[0], body=lines.slice(1), N=10; let upd=0, add=0, skip=0, rows=null;
+    for(let i=0;i<body.length;i+=N){ msg('読み込み中… '+Math.min(i+N,body.length)+' / '+body.length+' 人（このまま閉じずにお待ちください）'); const last=i+N>=body.length; const j=await api('bulk',{text:[head].concat(body.slice(i,i+N)).join('\n'), norows:!last}); upd+=j.upd||0; add+=j.add||0; skip+=j.skip||0; if(j.rows) rows=j.rows; }
+    msg('読み込みが終わりました：更新 '+upd+' 人、追加 '+add+' 人、読み飛ばし '+skip+' 行'); if(rows) render(rows); else load();
+  }catch(e){ msg('途中で止まりました：'+e.message+'　もう一度同じファイルを読み込めば、続きから追加されます'); } }
 $('#a_hire').innerHTML=dsel('ah','',YEAR-3,YEAR);
 load();
 </script>

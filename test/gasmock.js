@@ -16,21 +16,22 @@ function makeContext(opts) {
     setDataFromString(s, cs) { this.bytes = cs && /shift/i.test(cs) ? iconv.encode(s, 'Shift_JIS') : Buffer.from(s, 'utf8'); return this; }
     getContentType() { return this.mime; } setContentType(m) { this.mime = m; return this; } getName() { return this.name; } setName(n) { this.name = n; return this; } }
   function iter(arr) { let i = 0; return { hasNext: () => i < arr.length, next: () => arr[i++] }; }
+  const ops = { read: 0, write: 0 }; const R_ = (f) => (...a) => { ops.read++; return f(...a); }, W_ = (f) => (...a) => { ops.write++; return f(...a); };
   function wrap(n) {
     if (!n) return null;
     const common = { getId: () => n.id, getName: () => n.name, setName: (x) => { n.name = x; return wrap(n); }, isTrashed: () => n.trashed, setTrashed: (t) => { n.trashed = t; if (t && n.parent) nodes.get(n.parent).children.delete(n.id); return wrap(n); },
       getParents: () => iter(n.parent ? [wrap(nodes.get(n.parent))] : []), getUrl: () => 'https://drive.google.com/drive/folders/' + n.id };
     if (n.type === 'folder') return Object.assign(common, {
-      getFoldersByName: (name) => iter([...n.children].map(id => nodes.get(id)).filter(c => c.type === 'folder' && c.name === name && !c.trashed).map(wrap)),
-      getFilesByName: (name) => iter([...n.children].map(id => nodes.get(id)).filter(c => c.type === 'file' && c.name === name && !c.trashed).map(wrap)),
-      getFolders: () => iter([...n.children].map(id => nodes.get(id)).filter(c => c.type === 'folder' && !c.trashed).map(wrap)),
-      getFiles: () => iter([...n.children].map(id => nodes.get(id)).filter(c => c.type === 'file' && !c.trashed).map(wrap)),
-      createFolder: (name) => wrap(mkFolder(name, n.id)),
-      createFile: (a, b, c) => { let blob = a instanceof Blob ? a : new Blob(Buffer.from(String(b), 'utf8'), c || 'text/plain', a); const f = { id: nid(), name: blob.name, type: 'file', parent: n.id, bytes: blob.bytes, mime: blob.mime, trashed: false }; nodes.set(f.id, f); n.children.add(f.id); return wrap(f); },
+      getFoldersByName: R_((name) => iter([...n.children].map(id => nodes.get(id)).filter(c => c.type === 'folder' && c.name === name && !c.trashed).map(wrap))),
+      getFilesByName: R_((name) => iter([...n.children].map(id => nodes.get(id)).filter(c => c.type === 'file' && c.name === name && !c.trashed).map(wrap))),
+      getFolders: R_(() => iter([...n.children].map(id => nodes.get(id)).filter(c => c.type === 'folder' && !c.trashed).map(wrap))),
+      getFiles: R_(() => iter([...n.children].map(id => nodes.get(id)).filter(c => c.type === 'file' && !c.trashed).map(wrap))),
+      createFolder: W_((name) => wrap(mkFolder(name, n.id))),
+      createFile: W_((a, b, c) => { let blob = a instanceof Blob ? a : new Blob(Buffer.from(String(b), 'utf8'), c || 'text/plain', a); const f = { id: nid(), name: blob.name, type: 'file', parent: n.id, bytes: blob.bytes, mime: blob.mime, trashed: false }; nodes.set(f.id, f); n.children.add(f.id); return wrap(f); }),
     });
-    return Object.assign(common, { getBlob: () => new Blob(n.bytes, n.mime, n.name), setContent: (s) => { n.bytes = Buffer.from(String(s), 'utf8'); return wrap(n); } });
+    return Object.assign(common, { getBlob: () => { ops.read++; return new Blob(n.bytes, n.mime, n.name); }, setContent: (s) => { ops.write++; n.bytes = Buffer.from(String(s), 'utf8'); return wrap(n); } });
   }
-  const DriveApp = { getRootFolder: () => wrap(rootNode), getFolderById: (id) => { const n = nodes.get(id); if (!n || n.type !== 'folder' || n.trashed) throw new Error('not found ' + id); return wrap(n); }, getFileById: (id) => { const n = nodes.get(id); if (!n || n.type !== 'file') throw new Error('not found'); return wrap(n); }, createFolder: (name) => wrap(mkFolder(name, rootNode.id)) };
+  const DriveApp = { getRootFolder: () => wrap(rootNode), getFolderById: (id) => { ops.read++; const n = nodes.get(id); if (!n || n.type !== 'folder' || n.trashed) throw new Error('not found ' + id); return wrap(n); }, getFileById: (id) => { ops.read++; const n = nodes.get(id); if (!n || n.type !== 'file') throw new Error('not found'); return wrap(n); }, createFolder: (name) => wrap(mkFolder(name, rootNode.id)) };
   // ---- その他のサービス ----
   const PropertiesService = { getScriptProperties: () => ({ getProperty: k => props[k] === undefined ? null : props[k], setProperty: (k, v) => { props[k] = String(v); }, getProperties: () => Object.assign({}, props) }) };
   const CacheService = { getScriptCache: () => ({ get: k => cache.has(k) ? cache.get(k) : null, put: (k, v) => cache.set(k, String(v)), remove: k => cache.delete(k) }) };
@@ -65,7 +66,7 @@ function makeContext(opts) {
   const ctx = vm.createContext({ ContentService, DriveApp, PropertiesService, CacheService, LockService, Utilities, UrlFetchApp, ScriptApp, Logger, HtmlService, XmlService, console, Date, Math, JSON, Buffer });
   const dir = path.join(__dirname, '..', 'gas');
   for (const f of fs.readdirSync(dir)) { if (f.endsWith('.gs')) vm.runInContext(fs.readFileSync(path.join(dir, f), 'utf8'), ctx, { filename: f }); if (f.endsWith('.html')) htmlFiles[f.replace(/\.html$/, '')] = fs.readFileSync(path.join(dir, f), 'utf8'); }
-  ctx.__props = props; ctx.__nodes = nodes; ctx.__cache = cache;
+  ctx.__ops = ops; ctx.__props = props; ctx.__nodes = nodes; ctx.__cache = cache;
   return ctx;
 }
 module.exports = { makeContext };

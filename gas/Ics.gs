@@ -62,23 +62,25 @@ function icsImport(client, text) {
   var d = icsRead(text), year = cfg().year;
   var cd = pathFolder([client, String(year)], true);
   jsonSave(cd, '_ics_meta.json', { meta: d.meta, header: d.header, imported_at: nowIso() });
-  var codes = [];
+  var have = {}; listFolderNames(cd).forEach(function (n) { have[n] = 1; }); // 既にある人のフォルダ（問い合わせ1回）
+  var codes = [], rows = {};
   d.rows.forEach(function (row) {
     var code = String(row[C.code] || '').trim(); if (code === '') return;
-    var prev = icsRowToPrev(row);
-    var ed = pathFolder([client, String(year), safeEmp(code)], true);
-    jsonSave(ed, 'prev.json', prev);
-    var ro = jsonLoad(ed, 'roster.json', {});
+    var prev = icsRowToPrev(row), key = safeEmp(code), isNew = !have[key];
+    var ed = isNew ? newSubFolder(cd, key) : pathFolder([client, String(year), key], true);
+    if (isNew) jsonCreate(ed, 'prev.json', prev); else jsonSave(ed, 'prev.json', prev);
+    var ro = isNew ? {} : jsonLoad(ed, 'roster.json', {});
     var hire = warekiToIso(row[C.hire]), retire = warekiToIso(row[C.retire]), zai = String(row[C.zai] || '').trim();
     if (hire) ro.hire = hire;
     if (retire || zai.indexOf('退職') >= 0) { ro.status = 'retired'; if (retire) ro.retire = retire; ro.source = 'ics'; }
     else if (zai.indexOf('在職') >= 0) { ro.status = 'active'; ro.retire = ''; ro.source = 'ics'; }
     if (!ro.pin) { ro.pin = randomDigits(6); ro.pin_used = false; ro.pin_issued_at = nowIso(); } // 初回番号（会社が本人に渡す）
     ro.ics_imported_at = nowIso();
-    jsonSave(ed, 'roster.json', ro);
-    codes.push(code);
+    if (isNew) jsonCreate(ed, 'roster.json', ro); else jsonSave(ed, 'roster.json', ro);
+    rows[key] = isNew ? summaryRowFrom(code, null, prev, ro) : summaryRowFrom(code, jsonLoad(ed, 'answers.json'), prev, ro);
+    have[key] = 1; codes.push(code);
   });
-  summaryRebuild(client, year);
+  summaryMerge(client, year, rows); indexAdd(client, year);
   return codes;
 }
 function famAddr(f) { return (f.living || 'together') === 'together' ? '同上' : String(f.addr || ''); }
