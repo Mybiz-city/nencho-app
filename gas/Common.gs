@@ -279,7 +279,7 @@ function summaryRowFrom(emp, r, p, ro) {
     roster: ro.status || 'active', hire: ro.hire || '', retire: ro.retire || '',
     pin: ro.pin || '', pin_used: !!ro.pin_used, pin_used_count: ro.pin_used_count || 0, device: !!(r && r.device_bound_at),
     unknown_income: a.has_other_income === 'unknown', otsu: a.other_employer_decl === 'other',
-    pending: /^N/.test(String((r && r.emp) || emp))
+    pending: /^N/.test(String((r && r.emp) || emp)), added: !!ro.added_by
   };
 }
 /** 新しいフォルダを作る（無いと分かっているとき。探す問い合わせを省く） */

@@ -85,7 +85,7 @@ function adminApi(a, p) {
       var ed4 = pathFolder([cl4, String(c.year), safeEmp(e4)], true); var ro4 = jsonLoad(ed4, 'roster.json', {});
       if (!ro4.pin) { ro4.pin = randomDigits(6); ro4.pin_used = false; ro4.pin_issued_at = nowIso(); ro4.status = ro4.status || 'active'; jsonSave(ed4, 'roster.json', ro4); }
       summaryUpdate(cl4, e4); indexAdd(cl4, c.year);
-      return { ok: true, msg: '登録コード ' + cl4 + codeDigits(e4) + ' を作りました（初回番号 ' + ro4.pin + '）' };
+      return { ok: true, msg: '登録コード ' + cl4 + codeDigits(e4) + ' を作りました（暗証番号 ' + ro4.pin + '）' };
     }
     case 'export': {
       var cl5 = four(p.client), y5 = yearOf(p);
@@ -146,7 +146,7 @@ function adminApi(a, p) {
       if (p.checked) r11.office_checked_at = nowIso(); else delete r11.office_checked_at;
       saveRecord(r11); return { ok: true, msg: '保存しました' };
     }
-    case 'pin_reissue': { var pr = pinReissue(four(p.client), String(p.emp || '')); audit('pin reissue by office ' + four(p.client) + '-' + p.emp); return { ok: true, msg: '初回番号を発行し直しました：' + pr + '（前のスマホの合鍵は無効になりました）', pin: pr }; }
+    case 'pin_reissue': { var pr = pinReissue(four(p.client), String(p.emp || '')); audit('pin reissue by office ' + four(p.client) + '-' + p.emp); return { ok: true, msg: '暗証番号を発行し直しました：' + pr + '（前のスマホの合鍵は無効になりました）', pin: pr }; }
     case 'audit_tail': {
       var root = rootFolder(); var nm2 = '_audit_' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMM') + '.log'; var f = fileIn(root, nm2);
       var ls = ((f ? f.getBlob().getDataAsString('UTF-8') : '') + (PropertiesService.getScriptProperties().getProperty('AUDIT_BUF') || '')).split('\n').filter(function (l) { return l; });
@@ -169,7 +169,7 @@ function adminApi(a, p) {
   throw new Error('不明な操作: ' + a);
 }
 function addDays(iso, n) { var d = new Date(iso); if (isNaN(d)) return ''; d.setDate(d.getDate() + n); return Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd'); }
-/** 初回番号を作り直し、そのスマホの合鍵を無効にする */
+/** 暗証番号を作り直し、そのスマホの合鍵を無効にする */
 function pinReissue(client, emp) {
   var ed = empDir(client, emp, true); var ro = jsonLoad(ed, 'roster.json', {});
   ro.pin = randomDigits(6); ro.pin_used = false; ro.pin_issued_at = nowIso(); jsonSave(ed, 'roster.json', ro);

@@ -1,4 +1,4 @@
-// 従業員画面の裏側。ログインは「登録コード＋初回番号（会社が渡す）」。2回目以降はこのスマホの合鍵で自動
+// 従業員画面の裏側。ログインは「登録コード＋暗証番号（会社が渡す）」。2回目以降はこのスマホの合鍵で自動
 
 function packRecord(r) {
   var o = JSON.parse(JSON.stringify(r));
@@ -9,7 +9,7 @@ function packRecord(r) {
   return o;
 }
 function devicesLoad() { return jsonLoad(rootFolder(), '_devices.json', {}); }
-/** スマホの合鍵が有効な日数（初回番号を入れてから）。スクリプト プロパティ DEVICE_DAYS で変更可 */
+/** スマホの合鍵が有効な日数（暗証番号を入れてから）。スクリプト プロパティ DEVICE_DAYS で変更可 */
 function deviceDays() { var n = parseInt(PropertiesService.getScriptProperties().getProperty('DEVICE_DAYS') || '', 10); return n > 0 ? n : 3; }
 function deviceBind(client, emp) {
   var tok = randomHex(24), h = sha256(tok);
@@ -57,10 +57,10 @@ function empApi(a, p) {
       if ((ro2.status || 'active') === 'retired') throw new Error('退職された方は、この会社の年末調整の対象外です。源泉徴収票をもとにご自身で確定申告をしてください');
       var pin = zenToHanDigits(p.pin || '').replace(/\D/g, '');
       if (!pin) return { ok: true, need_pin: true };
-      if (!ro2.pin) { // 初回番号が未発行（古い取り込み）：この場で発行して会社に出す形にする
-        throw new Error('この登録コードには初回番号がまだありません。会社または事務所に「初回番号」を発行してもらってください');
+      if (!ro2.pin) { // 暗証番号が未発行（古い取り込み）：この場で発行して会社に出す形にする
+        throw new Error('この登録コードには暗証番号がまだありません。会社または事務所に「暗証番号」を発行してもらってください');
       }
-      if (!safeEq(ro2.pin, pin)) { throttleFail(tk, 5); throttleFail(tkc, 30); audit('pin mismatch ' + tk); throw new Error('初回番号が一致しません'); }
+      if (!safeEq(ro2.pin, pin)) { throttleFail(tk, 5); throttleFail(tkc, 30); audit('pin mismatch ' + tk); throw new Error('暗証番号が一致しません'); }
       ro2.pin_used = true; ro2.pin_used_at = nowIso(); ro2.pin_used_count = (ro2.pin_used_count || 0) + 1; jsonSave(ed, 'roster.json', ro2);
       throttleClear(tk); audit('login ok ' + pc.client + '-' + emp);
       var r3 = loadRecord(pc.client, emp);

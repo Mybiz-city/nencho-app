@@ -74,7 +74,7 @@ function icsImport(client, text) {
     if (hire) ro.hire = hire;
     if (retire || zai.indexOf('退職') >= 0) { ro.status = 'retired'; if (retire) ro.retire = retire; ro.source = 'ics'; }
     else if (zai.indexOf('在職') >= 0) { ro.status = 'active'; ro.retire = ''; ro.source = 'ics'; }
-    if (!ro.pin) { ro.pin = randomDigits(6); ro.pin_used = false; ro.pin_issued_at = nowIso(); } // 初回番号（会社が本人に渡す）
+    if (!ro.pin) { ro.pin = randomDigits(6); ro.pin_used = false; ro.pin_issued_at = nowIso(); } // 暗証番号（会社が本人に渡す）
     ro.ics_imported_at = nowIso();
     if (isNew) jsonCreate(ed, 'roster.json', ro); else jsonSave(ed, 'roster.json', ro);
     rows[key] = isNew ? summaryRowFrom(code, null, prev, ro) : summaryRowFrom(code, jsonLoad(ed, 'answers.json'), prev, ro);
