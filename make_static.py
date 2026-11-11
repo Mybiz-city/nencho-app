@@ -37,8 +37,9 @@ s = s.replace('<title>在籍者の確認 - <?= ctx.ok ? ctx.name : \'\' ?></titl
 s = s.replace('<header><b><?= ctx.name ?></b><br><small><?= ctx.year ?>年 年末調整　在籍者の確認</small></header>', '<header><b id="ctxname">読み込み中…</b><br><small><span id="ctxyear"></span>年 年末調整　在籍者の確認</small></header>')
 s = s.replace("const CTX = { c: <?!= JSON.stringify(ctx.client) ?>, k: <?!= JSON.stringify(q.k || '') ?> }, YEAR = <?= ctx.year ?>;",
   "const _qs = new URLSearchParams(location.search); const CTX = { c: _qs.get('c') || '', k: _qs.get('k') || '' }, YEAR = window.NENCHO.year; document.getElementById('ctxyear').textContent = YEAR;")
-s = s.replace("async function load(){ try{ const j=await api('list'); render(j.rows); }catch(e){ msg(e.message); } }",
-  "async function load(){ try{ const j=await api('list'); document.getElementById('ctxname').textContent=j.ctx.name; document.title='在籍者の確認 - '+j.ctx.name; render(j.rows); }catch(e){ document.getElementById('ctxname').textContent='開けません'; document.querySelectorAll('.wrap .card').forEach(c=>c.style.display='none'); msg(e.message); } }")
+s = s.replace("async function load(){ try{ const j=await api('list'); INFO=j.ctx||{}; render(j.rows); }catch(e){ msg(e.message); } }",
+  "async function load(){ try{ const j=await api('list'); document.getElementById('ctxname').textContent=j.ctx.name; document.title='在籍者の確認 - '+j.ctx.name; INFO=j.ctx||{}; render(j.rows); }catch(e){ document.getElementById('ctxname').textContent='開けません'; document.querySelectorAll('.wrap .card').forEach(c=>c.style.display='none'); msg(e.message); } }")
+assert 'ctxname' in s and "getElementById('ctxname').textContent=j.ctx.name" in s, '会社ページの置き換えが当たっていません'
 s = s.replace('<head>', '<head>' + SHIM, 1)
 assert '<?' not in s, re.findall(r'<\?.*?\?>', s); wr('company.html', s)
 # 設定ファイル（無ければ雛形）

@@ -5,7 +5,7 @@ function companyContext(c, k) {
   var client = four(c); var keys = jsonLoad(rootFolder(), '_company_keys.json', {}); var kk = keys[client];
   var expired = kk && (Date.now() - new Date(kk.issued_at || '2000-01-01').getTime() > 90 * 86400000);
   if (client.length !== 4 || !kk || expired || !safeEq(kk.key || '', String(k || ''))) { audit('company page denied ' + client); return { ok: false, error: 'このページは開けません。事務所から届いたURLをそのまま開いてください（URLは90日で期限が切れます）' }; }
-  return { ok: true, client: client, name: clientsLoad()[client] || ('顧問先 ' + client), year: cfg().year };
+  return { ok: true, client: client, name: clientsLoad()[client] || ('顧問先 ' + client), year: cfg().year, emp_url: pageUrl('emp'), deadline: cfg().deadline_text };
 }
 function companyNeed(p) { var ctx = companyContext(p.c, p.k); if (!ctx.ok) throw new Error(ctx.error); return ctx; }
 function companyRows(client) {
@@ -24,7 +24,7 @@ function companyApi(a, p) {
     }
     case 'add': {
       var name = String(p.name || '').trim(), kana = String(p.kana || '').trim(), birth = String(p.birth || ''), hire = String(p.hire || ''), sex = String(p.sex || '');
-      if (!name || !birth) throw new Error('氏名と生年月日は必須です');
+      if (!name) throw new Error('氏名を入れてください');
       var emp2 = companyNewCode(client); var ed2 = pathFolder([client, String(year), emp2], true);
       jsonSave(ed2, 'roster.json', { status: 'active', hire: hire, retire: '', added_by: 'company', added_at: nowIso(), name: name, kana: kana, birth: birth, sex: sex, pin: randomDigits(6), pin_used: false, pin_issued_at: nowIso() });
       var r = emptyRecord(client, emp2); r.answers = { name: name, kana: kana, birth: birth, sex: sex }; jsonSave(ed2, 'answers.json', r);

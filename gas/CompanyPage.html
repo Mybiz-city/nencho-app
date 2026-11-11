@@ -22,15 +22,15 @@ label{font-size:13px;color:#444}
 <? } else { ?>
 <header><b><?= ctx.name ?></b><br><small><?= ctx.year ?>年 年末調整　在籍者の確認</small></header>
 <div class="wrap"><div id="msg" class="msg" style="display:none"></div>
-<div class="card"><h2>お願い</h2><p style="margin:0;font-size:14px">今年の年末調整の対象者を確認してください。<b>今年中に退職した方</b>は「退職」にして退職日を、<b>今年入社した方</b>で一覧にない方は下の欄から追加してください。入社日・退職日は分かる範囲で結構です。</p>
-<p style="margin:8px 0 0;font-size:14px"><b>初回番号</b>は、従業員がスマホで初めて開くときに登録コードと一緒に入れる6桁です。本人にだけ渡してください（LINEで個別に送るか、紙で手渡し）。スマホを替えた方や、番号が他人に知られた心配があるときは「再発行」を押して新しい番号を渡してください（前の番号と前のスマホは使えなくなります）。</p></div>
-<div class="card"><h2>従業員の一覧（<span id="cnt"></span>人）</h2><div id="list">読み込み中…</div></div>
-<div class="card"><h2>人数が多い場合：CSVでまとめて更新</h2><input type="file" id="bulk" accept=".csv,.CSV">　<button class="sm" onclick="bulk()">読み込む</button>
-<p class="note">Excelで作った表をCSVで保存して上げてください。1行目は見出し：<b>氏名、生年月日</b>（必須）、入社日、退職日、フリガナ、性別（任意）。氏名と生年月日が同じ人は更新、いない人は追加します。社員番号は不要です（事務所側で決めます）。</p></div>
+<div class="card"><h2>お願い</h2><p style="margin:0;font-size:15px">今年の年末調整の対象者を確認してください。</p>
+<ol style="margin:6px 0 0;padding-left:22px;font-size:15px;line-height:1.7"><li><b>退職した方</b>：状態を「在籍 → 退職」にして、退職日を入れて保存</li><li><b>一覧にない方</b>：下の「一覧にない従業員を追加する」から追加</li><li><b>従業員への案内</b>：各人の「LINEで送る」か「案内文をコピー」で、本人にだけ送る</li></ol></div>
+<div class="card"><h2>従業員の一覧（<span id="cnt"></span>人）</h2><div id="list">読み込み中…</div>
+<p class="note" style="margin-top:10px">案内文には、その人専用の登録コードと初回番号が入っています。<b>必ず本人との個別のトークに</b>送ってください（グループには送らない）。スマホを替えた方、送り先を間違えたときは「再発行」で番号を作り直せます（前の番号は使えなくなります）。</p></div>
 <div class="card"><h2>一覧にない従業員を追加する</h2>
-<div class="row"><label>氏名<br><input type="text" id="a_name" placeholder="山田 太郎"></label><label>フリガナ<br><input type="text" id="a_kana" placeholder="ヤマダ タロウ"></label></div>
-<div class="row"><label>生年月日<br><span id="a_birth"></span></label><label>性別<br><select id="a_sex"><option value="">—</option><option>男</option><option>女</option></select></label><label>入社日<br><span id="a_hire"></span></label></div>
-<div class="row"><button onclick="add()">追加する</button></div><p class="note">追加した方の登録コードは、事務所が発行してお知らせします。</p></div>
+<div class="row"><label>氏名<br><input type="text" id="a_name" placeholder="山田 太郎"></label><label>フリガナ（分かれば）<br><input type="text" id="a_kana" placeholder="ヤマダ タロウ"></label><label>入社日（分かれば）<br><span id="a_hire"></span></label></div>
+<div class="row"><button onclick="add()">追加する</button></div><p class="note">生年月日や住所などは、本人がスマホで入力します。追加した方の登録コードは、事務所が発行してお知らせします。</p></div>
+<details class="card"><summary style="cursor:pointer;color:#007A67;font-weight:700">人数が多い場合：CSVでまとめて更新（表計算ソフトに慣れた方向け）</summary><div style="margin-top:10px"><input type="file" id="bulk" accept=".csv,.CSV">　<button class="sm" onclick="bulk()">読み込む</button>
+<p class="note">Excelで作った表をCSVで保存して上げてください。1行目は見出し：<b>氏名、生年月日</b>（必須）、入社日、退職日、フリガナ、性別（任意）。氏名と生年月日が同じ人は更新、いない人は追加します。社員番号は不要です（事務所側で決めます）。</p></div></details>
 </div>
 <script>
 const CTX = { c: <?!= JSON.stringify(ctx.client) ?>, k: <?!= JSON.stringify(q.k || '') ?> }, YEAR = <?= ctx.year ?>;
@@ -44,20 +44,28 @@ function yl(y){ for(const [g,e] of eras){ if(y>=e){ const n=y-e+1; return y+'年
 function dsel(id,val,y0,y1){ const [y,m,d]=(val||'').split('-').map(Number); let h='<span class="dsel" id="'+id+'"><select class="y"><option value="">年</option>'; for(let i=y1;i>=y0;i--) h+='<option value="'+i+'"'+(i===y?' selected':'')+'>'+yl(i)+'</option>'; h+='</select><select class="m"><option value="">月</option>'; for(let i=1;i<=12;i++) h+='<option value="'+i+'"'+(i===m?' selected':'')+'>'+i+'月</option>'; h+='</select><select class="d"><option value="">日</option>'; for(let i=1;i<=31;i++) h+='<option value="'+i+'"'+(i===d?' selected':'')+'>'+i+'日</option>'; h+='</select></span>'; return h; }
 function dval(id){ const el=document.getElementById(id); const y=el.querySelector('.y').value,m=el.querySelector('.m').value,d=el.querySelector('.d').value; return (y&&m&&d)? y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0') : ''; }
 const appName={submitted:'入力済み',in_progress:'入力中',new:'未入力'};
+// 従業員への案内文（その人専用）。送ったかどうかの印はこの端末だけに覚える
+let ROWS=[], INFO={}; let SENT={}; try{ SENT=JSON.parse(localStorage.getItem('nencho_sent_'+CTX.c)||'{}'); }catch(e){}
+function msgText(w){ const url=INFO.emp_url || new URL('./', location.href).href; return `${w.name} さん\n年末調整の入力をお願いします（スマホで10分ほど）。\n\n▼入力ページ\n${url}\n\n▼登録コード\n${w.code}\n\n▼初回番号\n${w.pin}\n${INFO.deadline?'\n期限：'+INFO.deadline+'\n':''}\n※登録コードと初回番号は、他の人に見せないでください。`; }
+function markSent(w){ SENT[w.emp]=1; try{ localStorage.setItem('nencho_sent_'+CTX.c, JSON.stringify(SENT)); }catch(e){} render(ROWS); }
+function sendLine(i){ const w=ROWS[i]; window.open('https://line.me/R/share?text='+encodeURIComponent(msgText(w)), '_blank'); markSent(w); }
+async function copyMsg(i,btn){ const w=ROWS[i]; const t=msgText(w); try{ await navigator.clipboard.writeText(t); }catch(e){ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); } markSent(w); msg(w.name+' さんへの案内文をコピーしました。本人との個別のトークやメールに貼り付けてください'); }
 function render(rows){
+  ROWS=rows;
   $('#cnt').textContent=rows.length;
   $('#list').innerHTML = rows.map((w,i)=>`<div class="it"><b>${esc(w.name)}</b> <span class="note">${w.birth?esc(w.birth.substr(0,4))+'年生まれ':''}</span>${w.status==='retired'?'<span class="st r">退職</span>':'<span class="st g">在籍</span>'}${w.pending?'<span class="st">コード発行待ち</span>':''}<span class="note" style="float:right">${appName[w.app]||''}</span>
     <div class="row"><label>状態 <select id="st_${i}" onchange="document.getElementById('rt_${i}').style.display=this.value==='retired'?'inline-flex':'none'"><option value="active" ${w.status!=='retired'?'selected':''}>在籍</option><option value="retired" ${w.status==='retired'?'selected':''}>退職</option></select></label>
     <label>入社日 ${dsel('hi_'+i, w.hire, YEAR-50, YEAR)}</label><span style="display:${w.status==='retired'?'inline-flex':'none'}" id="rt_${i}"><label>退職日 ${dsel('rt2_'+i, w.retire, YEAR-3, YEAR)}</label></span>
     <button class="sm" onclick="saveRow(${i},'${esc(w.emp)}')">保存</button></div>
-    <div class="row note">${w.pending?'登録コード：事務所が発行後にお知らせします':`登録コード <b>${esc(w.code)}</b>　初回番号 ${w.pin?'<span class="pin">'+esc(w.pin)+'</span>'+(w.pin_used?' <span class="st">スマホ登録 '+w.pin_used_count+'台</span>':''):'<span class="st">未発行</span>'}`} <button class="g sm" onclick="if(confirm('${esc(w.name)} さんの初回番号を作り直します。今登録されているスマホからは入れなくなります。よろしいですか？')) reissue('${esc(w.emp)}')">再発行</button></div></div>`).join('');
+    <div class="row note">${w.pending?'登録コード：事務所が発行後にお知らせします':`登録コード <b>${esc(w.code)}</b>　初回番号 ${w.pin?'<span class="pin">'+esc(w.pin)+'</span>'+(w.pin_used?' <span class="st">スマホ登録 '+w.pin_used_count+'台</span>':''):'<span class="st">未発行</span>'}`} <button class="g sm" onclick="if(confirm('${esc(w.name)} さんの初回番号を作り直します。今登録されているスマホからは入れなくなります。よろしいですか？')) reissue('${esc(w.emp)}')">再発行</button></div>
+    ${(!w.pending && w.pin && w.status!=='retired')?`<div class="row"><button class="sm" style="background:#06C755" onclick="sendLine(${i})">LINEで送る</button><button class="g sm" onclick="copyMsg(${i},this)">案内文をコピー</button>${SENT[w.emp]?'<span class="note">送信済み ✓</span>':''}</div>`:''}</div>`).join('');
 }
-async function load(){ try{ const j=await api('list'); render(j.rows); }catch(e){ msg(e.message); } }
+async function load(){ try{ const j=await api('list'); INFO=j.ctx||{}; render(j.rows); }catch(e){ msg(e.message); } }
 async function saveRow(i,emp){ try{ const j=await api('roster',{emp, status:$('#st_'+i).value, hire:dval('hi_'+i), retire:dval('rt2_'+i)}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
 async function reissue(emp){ try{ const j=await api('pin_reissue',{emp}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
-async function add(){ try{ const j=await api('add',{name:$('#a_name').value, kana:$('#a_kana').value, birth:dval('ab'), sex:$('#a_sex').value, hire:dval('ah')}); msg(j.msg); render(j.rows); $('#a_name').value=''; $('#a_kana').value=''; }catch(e){ msg(e.message); } }
+async function add(){ try{ const j=await api('add',{name:$('#a_name').value, kana:$('#a_kana').value, hire:dval('ah')}); msg(j.msg); render(j.rows); $('#a_name').value=''; $('#a_kana').value=''; }catch(e){ msg(e.message); } }
 async function bulk(){ const f=$('#bulk').files[0]; if(!f){ msg('CSVを選んでください'); return; } try{ const j=await api('bulk',{b64: await toB64(f)}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
-$('#a_birth').innerHTML=dsel('ab','',1930,YEAR); $('#a_hire').innerHTML=dsel('ah','',YEAR-3,YEAR);
+$('#a_hire').innerHTML=dsel('ah','',YEAR-3,YEAR);
 load();
 </script>
 <? } ?>
