@@ -66,17 +66,23 @@ function stChange(i){ const sel=$('#st_'+i); sel.classList.toggle('r', sel.value
 function render(rows){
   ROWS=rows;
   $('#cnt').textContent=rows.length;
-  $('#list').innerHTML = rows.map((w,i)=>`<div class="it"><b>${esc(w.name)}</b> <span class="note">${w.birth?esc(w.birth.substr(0,4))+'年生まれ':''}</span><select class="stsel ${w.status==='retired'?'r':''}" id="st_${i}" onchange="stChange(${i})"><option value="active" ${w.status!=='retired'?'selected':''}>在籍</option><option value="retired" ${w.status==='retired'?'selected':''}>退職</option></select><span class="note" style="float:right">${appName[w.app]||''}</span>
+  $('#list').innerHTML = rows.map((w,i)=>`<div class="it"><b>${esc(w.name)}</b><select class="stsel ${w.status==='retired'?'r':''}" id="st_${i}" onchange="stChange(${i})"><option value="active" ${w.status!=='retired'?'selected':''}>在籍</option><option value="retired" ${w.status==='retired'?'selected':''}>退職</option></select><span class="note" style="float:right">${appName[w.app]||''}</span>
     <div class="row"><label>入社日 ${dsel('hi_'+i, w.hire, YEAR-50, YEAR)}</label></div>
     <div class="row" style="display:${w.status==='retired'?'flex':'none'}" id="rt_${i}"><label>退職日 ${dsel('rt2_'+i, w.retire, YEAR-3, YEAR)}</label></div>
-    <div class="row"><button class="sm" onclick="saveRow(${i},'${esc(w.emp)}')">保存</button></div>
-    ${w.pending?'<div class="box note">登録コード：事務所が発行後にお知らせします</div>':`<div class="box"><div class="row note" style="margin-top:0">登録コード <b style="font-size:16px;color:#222">${esc(w.code)}</b>　暗証番号 ${w.pin?'<span class="pin">'+esc(w.pin)+'</span>'+(w.pin_used?' <span class="st">スマホ登録 '+w.pin_used_count+'台</span>':''):'<span class="st">未発行</span>'} <button class="g sm" onclick="if(confirm('${esc(w.name)} さんの暗証番号を作り直します。今登録されているスマホからは入れなくなります。よろしいですか？')) reissue('${esc(w.emp)}')">再発行</button></div>
+    <div class="row"><button class="sm" onclick="saveRow(${i},'${esc(w.emp)}')">保存</button>${w.added&&!w.tmp?`<button class="g sm" onclick="editRow(${i})">氏名を直す</button><button class="g sm" style="background:#C8372D" onclick="removeRow(${i})">削除</button>`:''}</div>
+    ${w.tmp?'<div class="box note">登録コードと暗証番号を発行しています…</div>':w.pending?'<div class="box note">登録コード：事務所が発行後にお知らせします</div>':`<div class="box"><div class="row note" style="margin-top:0">登録コード <b style="font-size:16px;color:#222">${esc(w.code)}</b>　暗証番号 ${w.pin?'<span class="pin">'+esc(w.pin)+'</span>'+(w.pin_used?' <span class="st">スマホ登録 '+w.pin_used_count+'台</span>':''):'<span class="st">未発行</span>'} <button class="g sm" onclick="if(confirm('${esc(w.name)} さんの暗証番号を作り直します。今登録されているスマホからは入れなくなります。よろしいですか？')) reissue('${esc(w.emp)}')">再発行</button></div>
     ${(w.pin && w.status!=='retired')?`<div class="row"><button class="sm" style="background:#06C755" onclick="sendLine(${i})">LINEで送る</button><button class="g sm" onclick="copyMsg(${i},this)">案内文をコピー</button>${SENT[w.emp]?'<span class="note">送信済み ✓</span>':''}</div>`:''}</div>`}</div>`).join('');
 }
 async function load(){ try{ const j=await api('list'); INFO=j.ctx||{}; TPL=j.tpl||''; $('#tpl').value=TPL||DEF_TPL; render(j.rows); }catch(e){ msg(e.message); } }
 async function saveRow(i,emp){ try{ const j=await api('roster',{emp, status:$('#st_'+i).value, hire:dval('hi_'+i), retire:dval('rt2_'+i)}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
 async function reissue(emp){ try{ const j=await api('pin_reissue',{emp}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
-async function add(){ try{ const j=await api('add',{name:$('#a_name').value, kana:$('#a_kana').value, hire:dval('ah')}); msg(j.msg); render(j.rows); $('#a_name').value=''; $('#a_kana').value=''; }catch(e){ msg(e.message); } }
+// 追加：画面には先に出し、登録コードの発行は裏で順番に行う
+let addChain=Promise.resolve();
+function add(){ const name=$('#a_name').value.trim(), kana=$('#a_kana').value.trim(), hire=dval('ah'); if(!name){ msg('氏名を入れてください'); return; }
+  ROWS=ROWS.concat([{emp:'tmp'+Date.now(), name, hire, status:'active', app:'new', tmp:true, added:true}]); render(ROWS); $('#a_name').value=''; $('#a_kana').value=''; msg(name+' さんを追加しています…（続けて次の方を入力できます）');
+  addChain=addChain.then(async()=>{ try{ const j=await api('add',{name, kana, hire}); msg(j.msg); render(j.rows.concat(ROWS.filter(r=>r.tmp).slice(1))); }catch(e){ ROWS=ROWS.filter(r=>!(r.tmp&&r.name===name)); render(ROWS); msg(name+' さんを追加できませんでした：'+e.message); } }); }
+async function editRow(i){ const w=ROWS[i]; const name=prompt('氏名を直してください', w.name); if(name===null) return; if(!name.trim()){ msg('氏名を入れてください'); return; } try{ const j=await api('edit',{emp:w.emp, name:name.trim(), kana:''}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
+async function removeRow(i){ const w=ROWS[i]; if(!confirm(w.name+' さんを一覧から削除します。この方の登録コードと暗証番号は使えなくなります。よろしいですか？')) return; try{ const j=await api('remove',{emp:w.emp}); delete SENT[w.emp]; msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
 // CSVは画面側で文字コードを直し、10人ずつに小分けして送る（途中経過を出す。長い処理で止まらないように）
 function decodeCsv(buf){ try{ return new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch(e){ return new TextDecoder('shift_jis').decode(buf); } }
 async function bulk(){ const f=$('#bulk').files[0]; if(!f){ msg('CSVを選んでください'); return; }

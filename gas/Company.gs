@@ -10,7 +10,7 @@ function companyContext(c, k) {
 function companyNeed(p) { var ctx = companyContext(p.c, p.k); if (!ctx.ok) throw new Error(ctx.error); return ctx; }
 function companyRows(client) {
   var s = summaryLoad(client); var y = cfg().year;
-  return Object.keys(s).sort().map(function (k) { var e = s[k]; return { emp: e.emp, name: e.name, birth: e.birth, hire: e.hire, retire: e.retire, status: e.roster, app: e.status, pending: e.pending, code: client + codeDigits(e.emp), pin: e.pin, pin_used: e.pin_used, pin_used_count: e.pin_used_count || 0, device: e.device }; });
+  return Object.keys(s).sort().map(function (k) { var e = s[k]; return { emp: e.emp, name: e.name, birth: e.birth, hire: e.hire, retire: e.retire, status: e.roster, app: e.status, pending: e.pending, code: client + codeDigits(e.emp), added: !!e.added, pin: e.pin, pin_used: e.pin_used, pin_used_count: e.pin_used_count || 0, device: e.device }; });
 }
 function companyApi(a, p) {
   var ctx = companyNeed(p); var client = ctx.client, year = cfg().year;
@@ -29,10 +29,14 @@ function companyApi(a, p) {
     case 'add': {
       var name = String(p.name || '').trim(), kana = String(p.kana || '').trim(), birth = String(p.birth || ''), hire = String(p.hire || ''), sex = String(p.sex || '');
       if (!name) throw new Error('氏名を入れてください');
-      var emp2 = nextEmpCode(client); var yd2 = pathFolder([client, String(year)], true);
+      var emp2, yd2 = pathFolder([client, String(year)], true);
       var ro2 = { status: 'active', hire: hire, retire: '', added_by: 'company', added_at: nowIso(), name: name, kana: kana, birth: birth, sex: sex, pin: randomDigits(6), pin_used: false, pin_issued_at: nowIso() };
-      jsonCreate(newSubFolder(yd2, emp2), 'roster.json', ro2);
-      var one = {}; one[emp2] = summaryRowFrom(emp2, null, null, ro2); summaryMerge(client, year, one); indexAdd(client, year);
+      withLock(function () { // 番号の取り合いを防ぐため、番号決め〜集計の反映までを1人ずつ
+        emp2 = nextEmpCode(client);
+        jsonCreate(newSubFolder(yd2, emp2), 'roster.json', ro2);
+        var s0 = jsonLoad(yd2, '_summary.json', {}); s0[emp2] = summaryRowFrom(emp2, null, null, ro2); jsonSave(yd2, '_summary.json', s0); homeUpdate(client, year, s0);
+      });
+      indexAdd(client, year);
       audit('company added ' + client + '-' + emp2);
       return { ok: true, msg: name + ' さんを追加しました。登録コードと暗証番号が一覧に出ています', rows: companyRows(client) };
     }
@@ -70,6 +74,23 @@ function companyApi(a, p) {
       if (Object.keys(changed).length) summaryMerge(client, year, changed);
       indexAdd(client, year);
       return { ok: true, upd: upd, add: add, skip: skip, msg: '更新 ' + upd + ' 人、追加 ' + add + ' 人、読み飛ばし ' + skip + ' 行', rows: p.norows ? undefined : companyRows(client) };
+    }
+    case 'edit': { // 会社が追加した人の氏名・フリガナの直し
+      var e5 = String(p.emp || ''), nm5 = String(p.name || '').trim(); if (!nm5) throw new Error('氏名を入れてください');
+      var ed5 = empDir(client, e5, false); var ro5 = ed5 ? jsonLoad(ed5, 'roster.json', {}) : null;
+      if (!ro5 || !ro5.added_by) throw new Error('直せるのは、この画面で追加した方だけです');
+      ro5.name = nm5; ro5.kana = String(p.kana || '').trim(); ro5.updated_at = nowIso(); jsonSave(ed5, 'roster.json', ro5);
+      var r5 = jsonLoad(ed5, 'answers.json'); if (r5 && !r5.submitted_at) { r5.answers = r5.answers || {}; r5.answers.name = nm5; if (ro5.kana) r5.answers.kana = ro5.kana; jsonSave(ed5, 'answers.json', r5); }
+      var o5 = {}; o5[e5] = summaryRowFrom(e5, r5, null, ro5); summaryMerge(client, year, o5);
+      return { ok: true, msg: '氏名を直しました', rows: companyRows(client) };
+    }
+    case 'remove': { // 会社が追加した人の取り消し（提出済みは不可）
+      var e6 = String(p.emp || ''); var ed6 = empDir(client, e6, false); var ro6 = ed6 ? jsonLoad(ed6, 'roster.json', {}) : null;
+      if (!ro6 || !ro6.added_by) throw new Error('削除できるのは、この画面で追加した方だけです。前からいる方は「退職」にしてください');
+      var r6 = jsonLoad(ed6, 'answers.json'); if (r6 && r6.status === 'submitted') throw new Error('この方は提出済みのため削除できません。事務所にご連絡ください');
+      deviceUnbindAll(client, e6); ed6.setTrashed(true); cacheDel('fid:' + pathFolder([client, String(year)], true).getId() + '/' + safeEmp(e6));
+      var o6 = {}; o6[e6] = null; summaryMerge(client, year, o6); audit('company removed ' + client + '-' + e6);
+      return { ok: true, msg: (ro6.name || '') + ' さんを削除しました', rows: companyRows(client) };
     }
     case 'pin_reissue': { var pin = pinReissue(client, String(p.emp || '')); audit('pin reissue by company ' + client + '-' + p.emp); return { ok: true, msg: '暗証番号を発行し直しました：' + pin, rows: companyRows(client) }; }
   }
