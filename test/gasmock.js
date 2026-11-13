@@ -44,7 +44,7 @@ function makeContext(opts) {
     computeDigest: (alg, s) => [...crypto.createHash('sha256').update(s, 'utf8').digest()].map(b => b > 127 ? b - 256 : b),
     computeHmacSignature: (alg, msg, key) => [...crypto.createHmac('sha1', Buffer.from(key)).update(Buffer.from(msg)).digest()].map(b => b > 127 ? b - 256 : b),
     DigestAlgorithm: { SHA_256: 'sha256' }, Charset: { UTF_8: 'utf8' }, MacAlgorithm: { HMAC_SHA_1: 'sha1' },
-    sleep: () => {},
+    sleep: () => {}, getUuid: () => crypto.randomUUID(),
     zip: (blobs, name) => { const z = new AdmZip(); blobs.forEach(b => z.addFile(b.name, b.bytes)); return new Blob(z.toBuffer(), 'application/zip', name); },
     unzip: (blob) => { const z = new AdmZip(blob.bytes); return z.getEntries().filter(e => !e.isDirectory).map(e => new Blob(e.getData(), 'application/octet-stream', e.entryName)); },
   };

@@ -82,6 +82,7 @@ function adminApi(a, p) {
     case 'client_name': { var nm = clientsLoad(); nm[four(p.client)] = String(p.name || '').trim(); jsonSave(rootFolder(), '_clients.json', nm); return { ok: true, msg: '保存しました' }; }
     case 'add_emp': {
       var cl4 = four(p.client), e4 = String(p.emp || '').trim(); if (cl4.length !== 4 || !e4) throw new Error('顧問先コード4桁と個人コードを入れてください');
+      if (!validEmp(e4)) throw new Error('個人コードに使えるのは、英数字と * - _ だけです');
       var ed4 = pathFolder([cl4, String(c.year), safeEmp(e4)], true); var ro4 = jsonLoad(ed4, 'roster.json', {});
       if (!ro4.pin) { ro4.pin = randomDigits(6); ro4.pin_used = false; ro4.pin_issued_at = nowIso(); ro4.status = ro4.status || 'active'; jsonSave(ed4, 'roster.json', ro4); }
       summaryUpdate(cl4, e4); indexAdd(cl4, c.year);
@@ -105,7 +106,7 @@ function adminApi(a, p) {
     case 'zipdict': { var zn = zipDictUpdate(); return { ok: true, msg: '郵便番号辞書を更新しました（' + zn + ' 件）' }; }
     case 'backup_codes': {
       var plain = [], hashes = [], al = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      for (var i2 = 0; i2 < 8; i2++) { var cd = ''; for (var j = 0; j < 10; j++) cd += al[Math.floor(Math.random() * 32)]; plain.push(cd.substr(0, 5) + '-' + cd.substr(5)); hashes.push(pwHash(cd)); }
+      for (var i2 = 0; i2 < 8; i2++) { var cd = randomPick(al, 10); plain.push(cd.substr(0, 5) + '-' + cd.substr(5)); hashes.push(pwHash(cd)); }
       jsonSave(rootFolder(), '_backup_codes.json', hashes); audit('backup codes issued');
       return { ok: true, msg: 'バックアップコードを発行しました（古いコードは無効）。この画面を閉じると二度と表示されません：' + plain.join('　') };
     }
@@ -125,6 +126,7 @@ function adminApi(a, p) {
       var cl9 = four(p.client), old = String(p.old || ''), nw = String(p.new || '').trim();
       var od = empDir(cl9, old, false); if (!od) throw new Error('元のフォルダがありません');
       if (!nw) throw new Error('個人コードを入れてください');
+      if (!validEmp(nw)) throw new Error('個人コードに使えるのは、英数字と * - _ だけです');
       if (empDir(cl9, nw, false)) throw new Error('その個人コードは既にあります');
       od.setName(safeEmp(nw)); cacheDel('fid:' + od.getParents().next().getId() + '/' + safeEmp(old));
       var r9 = jsonLoad(od, 'answers.json'); if (r9) { r9.emp = nw; jsonSave(od, 'answers.json', r9); }
@@ -172,8 +174,8 @@ function addDays(iso, n) { var d = new Date(iso); if (isNaN(d)) return ''; d.set
 /** 暗証番号を作り直し、そのスマホの合鍵を無効にする */
 function pinReissue(client, emp) {
   var ed = empDir(client, emp, true); var ro = jsonLoad(ed, 'roster.json', {});
-  ro.pin = randomDigits(6); ro.pin_used = false; ro.pin_issued_at = nowIso(); jsonSave(ed, 'roster.json', ro);
-  deviceUnbindAll(client, emp);
+  ro.pin = randomDigits(6); ro.pin_used = false; ro.pin_issued_at = nowIso(); ro.pin_fail = 0; delete ro.pin_locked; delete ro.pin_locked_at; jsonSave(ed, 'roster.json', ro);
+  deviceUnbindAll(client, emp); lineUnbindAll(client, emp);
   var r = jsonLoad(ed, 'answers.json'); if (r) { delete r.device_bound_at; jsonSave(ed, 'answers.json', r); }
   summaryUpdate(client, emp);
   return ro.pin;

@@ -43,8 +43,7 @@ function 初期設定() {
   var out = [];
   if (!p.getProperty('YEAR')) { p.setProperty('YEAR', String((new Date()).getFullYear())); }
   if (!p.getProperty('ADMIN_PW_HASH')) {
-    var al = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789', pw = '';
-    for (var i = 0; i < 14; i++) pw += al[Math.floor(Math.random() * al.length)];
+    var pw = randomPick('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789', 14);
     p.setProperty('ADMIN_PW_HASH', pwHash(pw));
     out.push('事務所パスワード（この1回しか表示されません。控えてください）： ' + pw);
   } else out.push('事務所パスワード：設定済み（変えるには パスワード再設定() を実行）');
@@ -61,8 +60,7 @@ function 初期設定() {
 }
 /** 事務所パスワードを作り直す（エディタから実行） */
 function パスワード再設定() {
-  var al = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789', pw = '';
-  for (var i = 0; i < 14; i++) pw += al[Math.floor(Math.random() * al.length)];
+  var pw = randomPick('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789', 14);
   setProp('ADMIN_PW_HASH', pwHash(pw));
   Logger.log('新しい事務所パスワード： ' + pw);
   return pw;

@@ -8,9 +8,15 @@ function companyContext(c, k) {
   return { ok: true, client: client, name: clientsLoad()[client] || ('顧問先 ' + client), year: cfg().year, emp_url: pageUrl('emp'), deadline: cfg().deadline_text };
 }
 function companyNeed(p) { var ctx = companyContext(p.c, p.k); if (!ctx.ok) throw new Error(ctx.error); return ctx; }
+/** 会社用ページから指定できるのは、一覧に載っている個人コードだけ（好きな文字を個人コードとして送り込ませない） */
+function companyEmp(client, emp) {
+  emp = String(emp || ''); var s = summaryLoad(client);
+  if (!emp || !Object.prototype.hasOwnProperty.call(s, emp)) throw new Error('この方は一覧に見つかりません。画面を開き直してください');
+  return emp;
+}
 function companyRows(client) {
   var s = summaryLoad(client); var y = cfg().year;
-  return Object.keys(s).sort().map(function (k) { var e = s[k]; return { emp: e.emp, name: e.name, birth: e.birth, hire: e.hire, retire: e.retire, status: e.roster, app: e.status, pending: e.pending, code: client + codeDigits(e.emp), added: !!e.added, pin: e.pin, pin_used: e.pin_used, pin_used_count: e.pin_used_count || 0, device: e.device }; });
+  return Object.keys(s).sort().map(function (k) { var e = s[k]; return { emp: e.emp, name: e.name, birth: e.birth, hire: e.hire, retire: e.retire, status: e.roster, app: e.status, pending: e.pending, code: client + codeDigits(e.emp), added: !!e.added, pin: e.pin, pin_locked: !!e.pin_locked, pin_used: e.pin_used, pin_used_count: e.pin_used_count || 0, device: e.device }; });
 }
 function companyApi(a, p) {
   var ctx = companyNeed(p); var client = ctx.client, year = cfg().year;
@@ -21,7 +27,7 @@ function companyApi(a, p) {
       return { ok: true, msg: tpl ? '案内文を保存しました' : '案内文を元の文に戻しました' };
     }
     case 'roster': {
-      var emp = String(p.emp || ''); var ed = empDir(client, emp, true); var ro = jsonLoad(ed, 'roster.json', {});
+      var emp = companyEmp(client, p.emp); var ed = empDir(client, emp, true); var ro = jsonLoad(ed, 'roster.json', {});
       ro.status = p.status === 'retired' ? 'retired' : 'active'; ro.hire = String(p.hire || '').trim(); ro.retire = ro.status === 'retired' ? String(p.retire || '').trim() : '';
       ro.updated_at = nowIso(); ro.updated_by = 'company'; jsonSave(ed, 'roster.json', ro); summaryUpdate(client, emp);
       return { ok: true, msg: '保存しました', rows: companyRows(client) };
@@ -78,7 +84,7 @@ function companyApi(a, p) {
       return { ok: true, upd: upd, add: add, skip: skip, msg: '更新 ' + upd + ' 人、追加 ' + add + ' 人、読み飛ばし ' + skip + ' 行', rows: p.norows ? undefined : companyRows(client) };
     }
     case 'edit': { // 会社が追加した人の氏名・フリガナの直し
-      var e5 = String(p.emp || ''), nm5 = String(p.name || '').trim(); if (!nm5) throw new Error('氏名を入れてください');
+      var e5 = companyEmp(client, p.emp), nm5 = String(p.name || '').trim(); if (!nm5) throw new Error('氏名を入れてください');
       var ed5 = empDir(client, e5, false); var ro5 = ed5 ? jsonLoad(ed5, 'roster.json', {}) : null;
       if (!ro5 || !ro5.added_by) throw new Error('直せるのは、この画面で追加した方だけです');
       ro5.name = nm5; if (String(p.kana || '').trim()) ro5.kana = String(p.kana).trim(); ro5.updated_at = nowIso(); jsonSave(ed5, 'roster.json', ro5);
@@ -87,14 +93,14 @@ function companyApi(a, p) {
       return { ok: true, msg: '氏名を直しました', rows: companyRows(client) };
     }
     case 'remove': { // 会社が追加した人の取り消し（提出済みは不可）
-      var e6 = String(p.emp || ''); var ed6 = empDir(client, e6, false); var ro6 = ed6 ? jsonLoad(ed6, 'roster.json', {}) : null;
+      var e6 = companyEmp(client, p.emp); var ed6 = empDir(client, e6, false); var ro6 = ed6 ? jsonLoad(ed6, 'roster.json', {}) : null;
       if (!ro6 || !ro6.added_by) throw new Error('削除できるのは、この画面で追加した方だけです。前からいる方は「退職」にしてください');
       var r6 = jsonLoad(ed6, 'answers.json'); if (r6 && r6.status === 'submitted') throw new Error('この方は提出済みのため削除できません。事務所にご連絡ください');
       deviceUnbindAll(client, e6); ed6.setTrashed(true); cacheDel('fid:' + pathFolder([client, String(year)], true).getId() + '/' + safeEmp(e6));
       var o6 = {}; o6[e6] = null; summaryMerge(client, year, o6); audit('company removed ' + client + '-' + e6);
       return { ok: true, msg: (ro6.name || '') + ' さんを削除しました', rows: companyRows(client) };
     }
-    case 'pin_reissue': { var pin = pinReissue(client, String(p.emp || '')); audit('pin reissue by company ' + client + '-' + p.emp); return { ok: true, msg: '暗証番号を発行し直しました：' + pin, rows: companyRows(client) }; }
+    case 'pin_reissue': { var e7 = companyEmp(client, p.emp); var pin = pinReissue(client, e7); audit('pin reissue by company ' + client + '-' + e7); return { ok: true, msg: '暗証番号を発行し直しました：' + pin, rows: companyRows(client) }; }
   }
   throw new Error('不明な操作');
 }

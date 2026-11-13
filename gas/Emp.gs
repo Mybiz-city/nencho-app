@@ -22,6 +22,24 @@ function deviceUnbindAll(client, emp) {
   withLock(function () { var d = jsonLoad(rootFolder(), '_devices.json', {}); var n = 0; for (var k in d) if (d[k].client === client && d[k].emp === emp) { delete d[k]; n++; } if (n) jsonSave(rootFolder(), '_devices.json', d); });
 }
 function lineMapLoad() { return jsonLoad(rootFolder(), '_line_map.json', {}); }
+/** LINE の結びつけを外す（暗証番号の再発行・ログアウトのとき） */
+function lineUnbindAll(client, emp) {
+  var has = false, m0 = lineMapLoad(); for (var k0 in m0) if (m0[k0].client === client && m0[k0].emp === emp) { has = true; break; }
+  if (!has) return; // 無ければ書かない
+  withLock(function () { var mp = jsonLoad(rootFolder(), '_line_map.json', {}); for (var k in mp) if (mp[k].client === client && mp[k].emp === emp) delete mp[k]; jsonSave(rootFolder(), '_line_map.json', mp); });
+}
+/** LINE の本人確認。画面が送ってきた IDトークンを LINE に照会し、本物なら LINE のユーザーID を返す（偽物・期限切れ・未設定は null）。
+ *  画面が名乗る LINE の ID は信用しない。LIFF の Scope に openid が要る */
+function lineVerify(idToken) {
+  var liff = cfg().liff_id; idToken = String(idToken || '');
+  if (!liff || !idToken || idToken.length > 4000) return null;
+  try {
+    var res = UrlFetchApp.fetch('https://api.line.me/oauth2/v2.1/verify', { method: 'post', payload: { id_token: idToken, client_id: String(liff).split('-')[0] }, muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) return null;
+    var j = JSON.parse(res.getContentText()); return j && j.sub ? String(j.sub) : null;
+  } catch (e) { return null; }
+}
+var PIN_FAIL_MAX = 10; // 暗証番号の間違いが累計でこの回数になったら、その暗証番号を止める（再発行で戻る）
 
 function empApi(a, p) {
   var who = sessionGet('emp', p._t);
@@ -40,32 +58,48 @@ function empApi(a, p) {
       audit('device login ' + d.client + '-' + d.emp);
       return { ok: true, known: true, _t: t, record: packRecord(r) };
     }
-    case 'line_login': {
-      var uid = String(p.line_user_id || '').trim(); if (!uid) throw new Error('LINEのIDがありません');
+    case 'line_login': { // LINE で入る。IDトークンを LINE に照会して確かめた人だけ。合鍵と同じ日数で切れ、退職者は通さない
+      var uid = lineVerify(p.id_token); if (!uid) return { ok: true, known: false };
       var m = lineMapLoad()[uid]; if (!m) return { ok: true, known: false };
+      if (Date.now() - new Date(m.at).getTime() > deviceDays() * 86400000) return { ok: true, known: false, expired: true, days: deviceDays() };
+      var roL = jsonLoad(empDir(m.client, m.emp, false), 'roster.json', {});
+      if ((roL.status || 'active') === 'retired') return { ok: true, known: false, retired: true };
       var r2 = loadRecord(m.client, m.emp); var t2 = sessionNew('emp', { client: m.client, emp: m.emp });
+      audit('line login ' + m.client + '-' + m.emp);
       return { ok: true, known: true, _t: t2, record: packRecord(r2) };
     }
     case 'login': {
       var pc = parseCode(p.code || ''); if (!pc) throw new Error('登録コードは数字で入れてください（例：9999000001）');
       var tk = 'code:' + pc.client + pc.num, tkc = 'client:' + pc.client;
-      if (!throttleOk(tk) || !throttleOk(tkc)) { audit('login locked ' + tk); throw new Error('試行回数が多すぎます。15分ほど待ってからやり直してください'); }
-      if (!clientDir(pc.client)) { throttleFail(tkc, 30); throw new Error('この登録コードの会社は、まだ登録されていません。事務所にご確認ください'); }
-      var emp = resolveEmp(pc.client, pc.num);
-      if (!emp) { throttleFail(tk, 5); throttleFail(tkc, 30); throw new Error('この登録コードは見つかりません。数字をもう一度ご確認ください'); }
-      var ed = empDir(pc.client, emp, true); var ro2 = jsonLoad(ed, 'roster.json', {});
-      if ((ro2.status || 'active') === 'retired') throw new Error('退職された方は、この会社の年末調整の対象外です。源泉徴収票をもとにご自身で確定申告をしてください');
       var pin = zenToHanDigits(p.pin || '').replace(/\D/g, '');
-      if (!pin) return { ok: true, need_pin: true };
-      if (!ro2.pin) { // 暗証番号が未発行（古い取り込み）：この場で発行して会社に出す形にする
-        throw new Error('この登録コードには暗証番号がまだありません。会社または事務所に「暗証番号」を発行してもらってください');
-      }
-      if (!safeEq(ro2.pin, pin)) { throttleFail(tk, 5); throttleFail(tkc, 30); audit('pin mismatch ' + tk); throw new Error('暗証番号が一致しません'); }
-      ro2.pin_used = true; ro2.pin_used_at = nowIso(); ro2.pin_used_count = (ro2.pin_used_count || 0) + 1; jsonSave(ed, 'roster.json', ro2);
+      if (!pin) return { ok: true, need_pin: true }; // 登録コードが実在するかは、暗証番号が合うまで答えない
+      if (!throttleOk(tk) || !throttleOk(tkc)) { audit('login locked ' + tk); throw new Error('試行回数が多すぎます。15分ほど待ってからやり直してください'); }
+      var BAD = '登録コードか暗証番号が違います。数字をもう一度ご確認ください。分からないときは、会社に暗証番号の再発行を頼んでください';
+      // 照合と失敗回数の記録は1人ずつ（同時に大量に送って回数制限をすり抜けるのを防ぐ）。この中では withLock を使う関数を呼ばない
+      var v = withLock(function () {
+        var bad = function () { throttleFail(tk, 5); throttleFail(tkc, 30); return { err: BAD }; };
+        if (!clientDir(pc.client)) return bad();
+        var emp0 = resolveEmp(pc.client, pc.num); if (!emp0) return bad();
+        var ed0 = empDir(pc.client, emp0, true); var ro0 = jsonLoad(ed0, 'roster.json', {});
+        if (ro0.pin_locked) return { err: 'この登録コードは、暗証番号の間違いが続いたため止めています。会社に暗証番号の再発行を頼んでください' };
+        if (!ro0.pin) return bad();
+        if (!safeEq(ro0.pin, pin)) {
+          ro0.pin_fail = (ro0.pin_fail || 0) + 1; var locked = ro0.pin_fail >= PIN_FAIL_MAX;
+          if (locked) { ro0.pin_locked = true; ro0.pin_locked_at = nowIso(); }
+          jsonSave(ed0, 'roster.json', ro0); audit('pin mismatch ' + tk + ' (' + ro0.pin_fail + ')' + (locked ? ' -> pin locked' : ''));
+          var b = bad(); if (locked) b.lockedEmp = emp0; return b;
+        }
+        if ((ro0.status || 'active') === 'retired') return { err: '退職された方は、この会社の年末調整の対象外です。源泉徴収票をもとにご自身で確定申告をしてください' };
+        ro0.pin_used = true; ro0.pin_used_at = nowIso(); ro0.pin_used_count = (ro0.pin_used_count || 0) + 1; ro0.pin_fail = 0; jsonSave(ed0, 'roster.json', ro0);
+        return { emp: emp0 };
+      });
+      if (v.lockedEmp) summaryUpdate(pc.client, v.lockedEmp); // 会社・事務所の一覧に「停止中」を出す
+      if (v.err) throw new Error(v.err);
+      var emp = v.emp;
       throttleClear(tk); audit('login ok ' + pc.client + '-' + emp);
       var r3 = loadRecord(pc.client, emp);
       var dtok = deviceBind(pc.client, emp); r3.device_bound_at = nowIso();
-      var uid2 = String(p.line_user_id || '').trim();
+      var uid2 = p.id_token ? lineVerify(p.id_token) : null; // LINE に照会できたときだけ結びつける
       if (uid2) { withLock(function () { var mp = jsonLoad(rootFolder(), '_line_map.json', {}); mp[uid2] = { client: pc.client, emp: emp, at: nowIso() }; jsonSave(rootFolder(), '_line_map.json', mp); }); r3.line_user_id = uid2; }
       if (r3.status === 'new') r3.status = 'in_progress';
       saveRecord(r3);
@@ -73,7 +107,7 @@ function empApi(a, p) {
       return { ok: true, _t: t3, dev: dtok, record: packRecord(r3) };
     }
     case 'logout': sessionDrop('emp', p._t); return { ok: true };
-    case 'unbind': { var w0 = need(); deviceUnbindAll(w0.client, w0.emp); var rr = loadRecord(w0.client, w0.emp); delete rr.device_bound_at; saveRecord(rr); sessionDrop('emp', p._t); audit('device unbind by employee ' + w0.client + '-' + w0.emp); return { ok: true }; }
+    case 'unbind': { var w0 = need(); deviceUnbindAll(w0.client, w0.emp); lineUnbindAll(w0.client, w0.emp); var rr = loadRecord(w0.client, w0.emp); delete rr.device_bound_at; saveRecord(rr); sessionDrop('emp', p._t); audit('device unbind by employee ' + w0.client + '-' + w0.emp); return { ok: true }; }
     case 'load': { var w = need(); return { ok: true, record: packRecord(loadRecord(w.client, w.emp)) }; }
     case 'save': {
       var w1 = need(); var r4 = loadRecord(w1.client, w1.emp);

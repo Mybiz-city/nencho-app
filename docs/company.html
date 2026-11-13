@@ -53,6 +53,8 @@ textarea{width:100%;box-sizing:border-box;font-size:15px;padding:8px;border:1px 
 const _qs = new URLSearchParams(location.search); const CTX = { c: _qs.get('c') || '', k: _qs.get('k') || '' }, YEAR = window.NENCHO.year; document.getElementById('ctxyear').textContent = YEAR;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// ボタン（onclick）の中に値を入れるときは必ずこれを通す。esc() だけだと、ボタンの中では ' が元に戻って命令を差し込める
+const q = v => esc(JSON.stringify(String(v ?? '')));
 const api = (a, body) => new Promise((res, rej) => { google.script.run.withSuccessHandler(j => { if (!j || !j.ok) { rej(new Error((j&&j.error)||'エラー')); return; } res(j); }).withFailureHandler(e => rej(new Error('通信に失敗しました：' + (e&&e.message||e)))).api('company.' + a, Object.assign({}, CTX, body || {})); });
 const toB64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });
 function msg(m){ const el=$('#msg'); el.textContent=m; el.style.display=m?'block':'none'; window.scrollTo(0,0); }
@@ -78,12 +80,13 @@ function render(rows){
   $('#list').innerHTML = rows.map((w,i)=>`<div class="it"><b>${esc(w.name)}</b><select class="stsel ${w.status==='retired'?'r':''}" id="st_${i}" onchange="stChange(${i})"><option value="active" ${w.status!=='retired'?'selected':''}>在籍</option><option value="retired" ${w.status==='retired'?'selected':''}>退職</option></select><span class="note" style="float:right">${appName[w.app]||''}</span>
     <div class="row"><label>入社日 ${dsel('hi_'+i, w.hire, YEAR-50, YEAR)}</label></div>
     <div class="row" style="display:${w.status==='retired'?'flex':'none'}" id="rt_${i}"><label>退職日 ${dsel('rt2_'+i, w.retire, YEAR-3, YEAR)}</label></div>
-    <div class="row"><button class="sm" onclick="saveRow(${i},'${esc(w.emp)}')">保存</button>${w.added&&!w.tmp?`<button class="g sm" onclick="editRow(${i})">氏名を直す</button><button class="g sm" style="background:#C8372D" onclick="removeRow(${i})">削除</button>`:''}</div>
-    ${w.tmp?'<div class="box note">登録コードと暗証番号を発行しています…</div>':w.pending?'<div class="box note">登録コード：事務所が発行後にお知らせします</div>':`<div class="box"><div class="row note" style="margin-top:0">登録コード <b style="font-size:16px;color:#222">${esc(w.code)}</b>　暗証番号 ${w.pin?'<span class="pin">'+esc(w.pin)+'</span>'+(w.pin_used?' <span class="st">スマホ登録 '+w.pin_used_count+'台</span>':''):'<span class="st">未発行</span>'} <button class="g sm" onclick="if(confirm('${esc(w.name)} さんの暗証番号を作り直します。今登録されているスマホからは入れなくなります。よろしいですか？')) reissue('${esc(w.emp)}')">再発行</button></div>
+    <div class="row"><button class="sm" onclick="saveRow(${i},${q(w.emp)})">保存</button>${w.added&&!w.tmp?`<button class="g sm" onclick="editRow(${i})">氏名を直す</button><button class="g sm" style="background:#C8372D" onclick="removeRow(${i})">削除</button>`:''}</div>
+    ${w.tmp?'<div class="box note">登録コードと暗証番号を発行しています…</div>':w.pending?'<div class="box note">登録コード：事務所が発行後にお知らせします</div>':`<div class="box"><div class="row note" style="margin-top:0">登録コード <b style="font-size:16px;color:#222">${esc(w.code)}</b>　暗証番号 ${w.pin?'<span class="pin">'+esc(w.pin)+'</span>'+(w.pin_locked?' <span class="st r">停止中：間違いが続いたため。「再発行」を押してください</span>':'')+(w.pin_used?' <span class="st">スマホ登録 '+w.pin_used_count+'台</span>':''):'<span class="st">未発行</span>'} <button class="g sm" onclick="reissueRow(${i})">再発行</button></div>
     ${(w.pin && w.status!=='retired')?`<div class="row"><button class="sm" style="background:#06C755" onclick="sendLine(${i})">LINEで送る</button><button class="g sm" onclick="copyMsg(${i},this)">案内文をコピー</button>${SENT[w.emp]?'<span class="note">送信済み ✓</span>':''}</div>`:''}</div>`}</div>`).join('');
 }
 async function load(){ try{ const j=await api('list'); document.getElementById('ctxname').textContent=j.ctx.name; document.title='在籍者の確認 - '+j.ctx.name; INFO=j.ctx||{}; TPL=j.tpl||''; $('#tpl').value=TPL||DEF_TPL; render(j.rows); }catch(e){ document.getElementById('ctxname').textContent='開けません'; document.querySelectorAll('.wrap .card').forEach(c=>c.style.display='none'); msg(e.message); } }
 async function saveRow(i,emp){ try{ const j=await api('roster',{emp, status:$('#st_'+i).value, hire:dval('hi_'+i), retire:dval('rt2_'+i)}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
+async function reissueRow(i){ const w=ROWS[i]; if(!w) return; if(confirm(w.name+' さんの暗証番号を作り直します。今登録されているスマホからは入れなくなります。よろしいですか？')) reissue(w.emp); }
 async function reissue(emp){ try{ const j=await api('pin_reissue',{emp}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
 // 追加：画面には先に出し、登録コードの発行は裏で順番に行う
 let addChain=Promise.resolve();

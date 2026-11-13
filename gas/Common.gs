@@ -149,10 +149,23 @@ function throttleFail(key, max) {
 function throttleClear(key) { cacheDel('fail:' + key); cacheDel('lock:' + key); }
 
 // ---------- 乱数・ハッシュ ----------
-function randomHex(nBytes) {
-  var s = ''; for (var i = 0; i < nBytes; i++) s += ('0' + Math.floor(Math.random() * 256).toString(16)).slice(-2); return s;
+/** 予測できない乱数（合鍵・暗証番号・パスワード用）。Math.random は使わない。UUID 2個（暗号用の乱数）を SHA-256 にかけて32バイトずつ取り出す */
+function randomBytes_(n) {
+  var out = [];
+  while (out.length < n) {
+    var d = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid() + Utilities.getUuid(), Utilities.Charset.UTF_8);
+    for (var i = 0; i < d.length && out.length < n; i++) out.push(d[i] & 255);
+  }
+  return out;
 }
-function randomDigits(n) { var s = ''; for (var i = 0; i < n; i++) s += Math.floor(Math.random() * 10); return s; }
+function randomHex(nBytes) { return randomBytes_(nBytes).map(function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
+/** 文字の一覧から n 文字を偏りなく選ぶ */
+function randomPick(alphabet, n) {
+  var s = '', lim = 256 - (256 % alphabet.length);
+  while (s.length < n) { var b = randomBytes_(32); for (var i = 0; i < b.length && s.length < n; i++) if (b[i] < lim) s += alphabet.charAt(b[i] % alphabet.length); }
+  return s;
+}
+function randomDigits(n) { return randomPick('0123456789', n); }
 function sha256(s) {
   var raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, s, Utilities.Charset.UTF_8);
   return raw.map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
@@ -192,7 +205,7 @@ function totpVerify(secret, code) {
   for (var w = -1; w <= 1; w++) if (safeEq(totpCode(secret, now + w * 30), code)) return true;
   return false;
 }
-function totpNewSecret() { var al = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567', s = ''; for (var i = 0; i < 32; i++) s += al[Math.floor(Math.random() * 32)]; return s; } // 認証アプリは8の倍数の文字数しか受け付けない
+function totpNewSecret() { return randomPick('ABCDEFGHIJKLMNOPQRSTUVWXYZ234567', 32); } // 認証アプリは8の倍数の文字数しか受け付けない
 
 // ---------- 文字の小道具 ----------
 function zenToHanDigits(s) { return String(s || '').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }).replace(/[／－．]/g, function (c) { return { '／': '/', '－': '-', '．': '.' }[c]; }); }
@@ -237,6 +250,8 @@ function parseCode(code) {
   return { client: d.substr(0, 4), num: d.substr(4) };
 }
 function codeDigits(emp) { return String(emp || '').replace(/\D/g, ''); }
+/** 個人コードとして新しく受け付ける形（英数字と * - _ だけ。記号入りの文字を画面に流さないため） */
+function validEmp(emp) { return /^[\w\*\-]{1,20}$/.test(String(emp || '')); }
 function safeEmp(emp) { return String(emp).replace(/[^\w\*\-]/g, '_'); }
 function clientDir(client, year) { return pathFolder([client, String(year || cfg().year)], false); }
 function empDir(client, emp, create, year) { return pathFolder([client, String(year || cfg().year), safeEmp(emp)], !!create); }
@@ -277,7 +292,7 @@ function summaryRowFrom(emp, r, p, ro) {
     updated: (r && (r.submitted_at || r.updated_at)) || '',
     certs: certs, checked: !!(r && r.office_checked_at),
     roster: ro.status || 'active', hire: ro.hire || '', retire: ro.retire || '',
-    pin: ro.pin || '', pin_used: !!ro.pin_used, pin_used_count: ro.pin_used_count || 0, device: !!(r && r.device_bound_at),
+    pin: ro.pin || '', pin_locked: !!ro.pin_locked, pin_used: !!ro.pin_used, pin_used_count: ro.pin_used_count || 0, device: !!(r && r.device_bound_at),
     unknown_income: a.has_other_income === 'unknown', otsu: a.other_employer_decl === 'other',
     pending: /^N/.test(String((r && r.emp) || emp)), added: !!ro.added_by
   };
