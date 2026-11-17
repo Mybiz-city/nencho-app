@@ -20,13 +20,19 @@ label{font-size:13px;color:#444}
 textarea{width:100%;box-sizing:border-box;font-size:15px;padding:8px;border:1px solid #ccc;border-radius:8px;font-family:inherit}
 .pin{font-family:monospace;font-size:18px;letter-spacing:.15em;background:#E3F4F0;padding:2px 8px;border-radius:6px}
 .dsel{display:inline-flex;gap:4px}.dsel select{padding:6px 4px}
+#busy{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:#222;color:#fff;padding:9px 16px 9px 12px;border-radius:999px;font-size:14px;display:none;align-items:center;gap:8px;z-index:9;box-shadow:0 2px 8px rgba(0,0,0,.25);white-space:nowrap}
+#busy.on{display:flex}.ring{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.wait{display:flex;align-items:center;gap:10px;color:#555;font-size:15px}.wait .ring{border-color:#cfe5df;border-top-color:#00A88E;width:20px;height:20px}
+body.busy #gate button{opacity:.55;pointer-events:none}
 </style></head><body>
 <? if (!ctx.ok) { ?>
 <p style="font-family:sans-serif;padding:30px"><?= ctx.error ?></p>
 <? } else { ?>
 <header><b><?= ctx.name ?></b><br><small><?= ctx.year ?>年 年末調整　在籍者の確認</small></header>
+<div id="busy" role="status"><span class="ring"></span><span id="busyt">通信中…</span></div>
 <div class="wrap"><div id="msg" class="msg" style="display:none"></div>
-<div id="gate" class="card" style="display:none"></div>
+<div id="gate" class="card"><div class="wait"><span class="ring"></span>確認しています…</div></div>
 <div id="main" style="display:none">
 <div class="card"><h2>お願い</h2><p style="margin:0;font-size:15px">今年の年末調整の対象者を確認してください。</p>
 <ol style="margin:6px 0 0;padding-left:22px;font-size:15px;line-height:1.7"><li><b>退職した方</b>：状態を「在籍 → 退職」にして、退職日を入れて保存</li><li><b>一覧にない方</b>：下の「一覧にない従業員を追加する」から追加</li><li><b>従業員への案内</b>：各人の「LINEで送る」か「案内文をコピー」で、本人にだけ送る</li></ol></div>
@@ -49,7 +55,10 @@ const $ = s => document.querySelector(s);
 // 社長用の番号を確認できた端末の合鍵（この端末だけに覚える。URLを作り直すと無効になる）
 let DEV=''; try{ DEV=localStorage.getItem('nencho_cdev_'+CTX.c)||''; }catch(e){}
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const api = (a, body) => new Promise((res, rej) => { google.script.run.withSuccessHandler(j => { if (!j || !j.ok) { rej(new Error((j&&j.error)||'エラー')); return; } res(j); }).withFailureHandler(e => rej(new Error('通信に失敗しました：' + (e&&e.message||e)))).api('company.' + a, Object.assign({}, CTX, { dev: DEV }, body || {})); });
+// 待ち表示：通信中は画面の下に「◯ 通信中…」を出す。複数が同時に走っても、全部終わるまで出したままにする
+const WAITTXT={gate:'確認しています…',pass_set:'番号を登録しています…',pass_enter:'番号を確認しています…',list:'一覧を読み込んでいます…',roster:'保存しています…',add:'従業員を追加しています…',bulk:'CSVを読み込んでいます…',edit:'保存しています…',remove:'削除しています…',pin_reissue:'暗証番号を作り直しています…',msg_save:'案内文を保存しています…'};
+let PENDING=0; function busy(d,a){ PENDING=Math.max(0,PENDING+d); const b=$('#busy'); if(d>0) $('#busyt').textContent=WAITTXT[a]||'通信中…'; b.classList.toggle('on',PENDING>0); document.body.classList.toggle('busy',PENDING>0); }
+const api = (a, body) => new Promise((res, rej) => { busy(1,a); google.script.run.withSuccessHandler(j => { busy(-1); if (!j || !j.ok) { rej(new Error((j&&j.error)||'エラー')); return; } res(j); }).withFailureHandler(e => { busy(-1); rej(new Error('通信に失敗しました：' + (e&&e.message||e))); }).api('company.' + a, Object.assign({}, CTX, { dev: DEV }, body || {})); });
 const toB64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });
 function msg(m){ const el=$('#msg'); el.textContent=m; el.style.display=m?'block':'none'; window.scrollTo(0,0); }
 const eras=[['令',2019],['平',1989],['昭',1926],['大',1912],['明',1868]];
@@ -98,17 +107,18 @@ async function bulk(){ const f=$('#bulk').files[0]; if(!f){ msg('CSVを選んで
   }catch(e){ msg('途中で止まりました：'+e.message+'　もう一度同じファイルを読み込めば、続きから追加されます'); } }
 // ---- 入口：社長用の番号（6桁）。初めて開いた人が決め、別の端末では入力する ----
 function showMain(){ $('#gate').style.display='none'; $('#main').style.display='block'; }
+function enter(j){ showMain(); if(j&&j.rows){ const n=document.getElementById('ctxname'); if(j.ctx&&j.ctx.name){ if(n) n.textContent=j.ctx.name; document.title='在籍者の確認 - '+j.ctx.name; } INFO=j.ctx||{}; TPL=j.tpl||''; $('#tpl').value=TPL||DEF_TPL; render(j.rows); } else { $('#list').innerHTML='<div class="wait"><span class="ring"></span>一覧を読み込んでいます…</div>'; load(); } } // 番号の確認と一緒に一覧が届いていれば、取りに行かない
 function gateBox(h){ const g=$('#gate'); g.innerHTML=h; g.style.display='block'; $('#main').style.display='none'; const f=g.querySelector('input'); if(f) f.focus(); }
 const pinIn=(id,ph,fn)=>'<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" id="'+id+'" placeholder="'+ph+'" onkeydown="if(event.key===\'Enter\'){'+fn+'}" style="font-size:22px;letter-spacing:.3em;width:9em;text-align:center">';
 function gateSet(){ gateBox('<h2>最初に番号を決めてください</h2><p style="margin:0 0 8px">このページには、従業員の登録コードと暗証番号が並びます。URLがほかの人に渡っても開かないよう、<b>数字6桁</b>の番号を決めてください。</p><div class="row">'+pinIn('gp1','6桁',"document.getElementById('gp2').focus()")+'</div><div class="row">'+pinIn('gp2','もう一度','passSet()')+'</div><div class="row"><button onclick="passSet()">この番号に決める</button></div><p class="note">次から、この端末では番号を聞かれません。別のスマホやパソコンで開くときに、この番号を入れます。忘れたときは事務所にご連絡ください。</p>'); }
 function gateEnter(){ gateBox('<h2>番号を入れてください</h2><p style="margin:0 0 8px">このページを最初に開いたときに決めた、数字6桁の番号です。</p><div class="row">'+pinIn('gp1','6桁','passEnter()')+'</div><div class="row"><button onclick="passEnter()">開く</button></div><p class="note">番号を忘れたとき、決めた覚えがないときは、事務所にご連絡ください。</p>'); }
 function gateStop(m){ const n=document.getElementById('ctxname'); if(n&&n.textContent==='読み込み中…') n.textContent='開けません'; gateBox('<p style="margin:0;font-size:16px">'+esc(m)+'</p>'); }
 function keepDev(d){ DEV=d||''; try{ localStorage.setItem('nencho_cdev_'+CTX.c, DEV); }catch(e){} }
-async function passSet(){ const a=$('#gp1').value.trim(), b=$('#gp2').value.trim(); if(a!==b){ msg('2回の番号が違います。もう一度入れてください'); return; } try{ const j=await api('pass_set',{pass:a}); keepDev(j.dev); msg('番号を決めました。この端末では、次から聞かれません'); showMain(); load(); }catch(e){ msg(e.message); } }
-async function passEnter(){ try{ const j=await api('pass_enter',{pass:$('#gp1').value.trim()}); keepDev(j.dev); msg(''); showMain(); load(); }catch(e){ msg(e.message); const f=$('#gp1'); if(f){ f.value=''; f.focus(); } } }
-async function start(){ let g; try{ g=await api('gate'); }catch(e){ if(e.message==='不明な操作'){ showMain(); load(); return; } gateStop(e.message); return; } // 「不明な操作」＝裏側がまだ前の版。番号なしで今までどおり開く
+async function passSet(){ const a=$('#gp1').value.trim(), b=$('#gp2').value.trim(); if(a!==b){ msg('2回の番号が違います。もう一度入れてください'); return; } try{ const j=await api('pass_set',{pass:a}); keepDev(j.dev); msg('番号を決めました。この端末では、次から聞かれません'); enter(j); }catch(e){ msg(e.message); } }
+async function passEnter(){ try{ const j=await api('pass_enter',{pass:$('#gp1').value.trim()}); keepDev(j.dev); msg(''); enter(j); }catch(e){ msg(e.message); const f=$('#gp1'); if(f){ f.value=''; f.focus(); } } }
+async function start(){ let g; try{ g=await api('gate'); }catch(e){ if(e.message==='不明な操作'){ enter(null); return; } gateStop(e.message); return; } // 「不明な操作」＝裏側がまだ前の版。番号なしで今までどおり開く
   if(g.name){ const n=document.getElementById('ctxname'); if(n) n.textContent=g.name; }
-  if(g.state==='ok'){ showMain(); load(); } else if(g.state==='set') gateSet(); else if(g.state==='locked') gateStop('番号の間違いが続いたため、このページを止めています。事務所にご連絡ください'); else gateEnter(); }
+  if(g.state==='ok') enter(g); else if(g.state==='set') gateSet(); else if(g.state==='locked') gateStop('番号の間違いが続いたため、このページを止めています。事務所にご連絡ください'); else gateEnter(); }
 $('#a_hire').innerHTML=dsel('ah','',YEAR-3,YEAR);
 start();
 </script>

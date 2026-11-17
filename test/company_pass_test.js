@@ -21,6 +21,7 @@ ok('同じ数字6つは断る', api('pass_set', Object.assign(base(), { pass: '1
 ok('123456 は断る', api('pass_set', Object.assign(base(), { pass: '123456' })).ok === false);
 const s1 = api('pass_set', Object.assign(base(), { pass: '２４６８１０' })); // 全角でも通る
 ok('番号を決めると端末の合鍵が返る', s1.ok && /^[0-9a-f]{48}$/.test(s1.dev));
+ok('番号を決めた返事に一覧も入っている（通信1回で画面が出る）', Array.isArray(s1.rows) && s1.ctx && s1.ctx.name === 'サンプル株式会社');
 ok('番号そのものは保存しない（ハッシュだけ）', JSON.stringify(K()).indexOf('246810') < 0 && JSON.stringify(K()).indexOf(s1.dev) < 0);
 ok('2回目は決められない', api('pass_set', Object.assign(base(), { pass: '135790' })).ok === false);
 const d1 = Object.assign(base(), { dev: s1.dev });
@@ -30,11 +31,15 @@ ok('一覧に暗証番号が出るのは確認済みの端末だけ', api('list'
 
 console.log('3. 別の端末（URLだけを知っている人）');
 ok('番号を聞かれる', api('gate', base()).state === 'enter');
+ok('番号を聞く返事には一覧が入っていない', api('gate', base()).rows === undefined && JSON.stringify(api('gate', base())).indexOf('pin') < 0);
+ok('確認済みの端末への返事には一覧が入っている', api('gate', d1).rows.length === 1);
 ok('一覧は出ない', api('list', base()).ok === false);
 ok('でたらめな合鍵でも出ない', api('list', Object.assign(base(), { dev: 'a'.repeat(48) })).ok === false);
-ok('違う番号は通らない', api('pass_enter', Object.assign(base(), { pass: '000001' })).ok === false);
+const w1 = api('pass_enter', Object.assign(base(), { pass: '000001' }));
+ok('違う番号は通らず、返事に一覧も入っていない', w1.ok === false && w1.rows === undefined);
 const s2 = api('pass_enter', Object.assign(base(), { pass: '246810' }));
 ok('正しい番号で開き、合鍵が返る', s2.ok && s2.dev && s2.dev !== s1.dev);
+ok('正しい番号の返事に一覧も入っている', s2.rows.length === 1);
 ok('2台目も一覧が出る', api('list', Object.assign(base(), { dev: s2.dev })).ok === true);
 ok('正しく入ると間違いの回数は0に戻る', (K().pass_fail || 0) === 0);
 

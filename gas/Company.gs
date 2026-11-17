@@ -39,11 +39,14 @@ function companyPassDigits(v) {
   if (pw.length !== 6) throw new Error('番号は数字6桁で入れてください');
   return pw;
 }
+/** 一覧の画面に要るものをまとめて返す（番号の確認と同じ通信で返して、待ち時間を1回分に減らす） */
+function companyListData(client, ctx) { return { rows: companyRows(client), ctx: ctx, tpl: (jsonLoad(clientDir(client), '_company_msg.json', {}) || {}).tpl || '' }; }
+function companyWith(base, client, ctx) { var d = companyListData(client, ctx); for (var k in d) base[k] = d[k]; return base; }
 var COMPANY_LOCKED_MSG = '番号の間違いが続いたため、このページを止めています。事務所にご連絡ください';
 function companyApi(a, p) {
   var ctx = companyNeed(p); var client = ctx.client, year = cfg().year;
   var gate = companyGate(client, p);
-  if (a === 'gate') return { ok: true, state: gate, name: ctx.name, year: ctx.year };
+  if (a === 'gate') { var g0 = { ok: true, state: gate, name: ctx.name, year: ctx.year }; return gate === 'ok' ? companyWith(g0, client, ctx) : g0; } // 確認済みの端末には一覧も一緒に返す
   if (a === 'pass_set') { // 初めて開いた人が番号を決める（決められるのは1回だけ。やり直しは事務所画面から）
     var pw = companyPassDigits(p.pass);
     if (/^(\d)\1{5}$/.test(pw) || pw === '123456' || pw === '654321') throw new Error('この番号は当てられやすいので、別の番号にしてください');
@@ -56,7 +59,7 @@ function companyApi(a, p) {
       jsonSave(rootFolder(), '_company_keys.json', keys);
     });
     audit('company pass set ' + client);
-    return { ok: true, dev: tok };
+    return companyWith({ ok: true, dev: tok }, client, ctx);
   }
   if (a === 'pass_enter') { // 別の端末で開いたとき：決めた番号を入れる
     if (gate === 'set') throw new Error('まだ番号が決められていません。画面を開き直してください');
@@ -75,12 +78,12 @@ function companyApi(a, p) {
       throw new Error(stop ? COMPANY_LOCKED_MSG : '番号が一致しません');
     }
     throttleClear(tk); audit('company pass ok ' + client);
-    return { ok: true, dev: tok2 };
+    return companyWith({ ok: true, dev: tok2 }, client, ctx);
   }
   // ここから下は、社長用の番号を確認できた端末だけ
   if (gate !== 'ok') throw new Error(gate === 'locked' ? COMPANY_LOCKED_MSG : gate === 'set' ? 'このページを開き直して、最初に社長用の番号（6桁）を決めてください' : 'このページを開き直して、社長用の番号（6桁）を入れてください');
   switch (a) {
-    case 'list': return { ok: true, rows: companyRows(client), ctx: ctx, tpl: (jsonLoad(clientDir(client), '_company_msg.json', {}) || {}).tpl || '' };
+    case 'list': return companyWith({ ok: true }, client, ctx);
     case 'msg_save': { // 従業員への案内文（会社ごと）
       var tpl = String(p.tpl || '').substr(0, 1500); jsonSave(pathFolder([client, String(year)], true), '_company_msg.json', { tpl: tpl, at: nowIso() });
       return { ok: true, msg: tpl ? '案内文を保存しました' : '案内文を元の文に戻しました' };
