@@ -70,7 +70,7 @@ company = f'''
 <div class="card">{h(2,'在籍者を確かめる','s2')}
 <p>「従業員の一覧」に、今年の年末調整の対象者が並んでいます。1人ずつ見て、次の2つを直します。</p>
 <div class="scr"><div class="cap">画面の見本（1人分）</div><div class="in"><b>山田 太郎</b> <span class="pill">在籍 ▾</span><span class="st">未入力</span><br>入社日 <span class="fld">2022年（令4）</span> <span class="fld">4月</span> <span class="fld">1日</span><br><span class="btn" style="margin-top:6px">保存</span>
-<div class="box">登録コード <b>9999000001</b>　暗証番号 <span class="pin">482913</span> <span class="btn g">再発行</span><br><span class="btn l" style="margin-top:6px">LINEで送る</span> <span class="btn g">案内文をコピー</span></div></div></div>
+<div class="box">登録コード <b>9999000001</b>　暗証番号 <span class="pin">482913</span> <span class="btn g">再発行</span><br><span class="btn l" style="margin-top:6px">プレビューしてLINEで送信</span> <span class="btn w">確認せずLINEで送信</span> <span class="btn g">案内文をコピー</span></div></div></div>
 <div class="pt"><div class="k">A</div><div><b>退職した方</b><br>緑の「在籍」を押して「退職」に変える → 退職日を選ぶ → 「保存」。退職した方には案内を送るボタンが出なくなります。</div></div>
 <div class="pt"><div class="k">B</div><div><b>入社日が空欄の方</b><br>年・月・日を選んで「保存」。日が分からなければ、年と月だけで保存できます。</div></div>
 <div class="warn">年の途中で退職した方は、この会社の年末調整の対象外です。必ず「退職」にしてください。</div></div>
@@ -82,12 +82,14 @@ company = f'''
 <p class="note">前から一覧にいる方は削除できません。退職した方は「退職」にしてください。</p></div>
 
 <div class="card">{h(4,'案内を送る','s4')}
-<p>案内文は、その方専用の<b>登録コード</b>と<b>暗証番号</b>を伝える文です。この2つがあれば本人の入力画面に入れるため、送り方に決まりがあります。</p>
+<p>案内文は、その方専用の<b>入力ページのリンク</b>と、<b>登録コード</b>・<b>暗証番号</b>を伝える文です。リンクを押すだけでその方の入力画面に入れるため、送り方に決まりがあります。</p>
 <div class="ox"><div class="o"><b>○</b>本人との1対1のトークに送る</div><div class="x"><b>×</b>グループLINEに送る・ほかの人に頼んで転送する</div></div>
-<h3>LINEで送る場合</h3>
-<ol><li>その方の緑のボタン「<b>LINEで送る</b>」を押す</li><li>LINEが開くので、送り先に<b>本人</b>を選ぶ</li><li>文面を確かめて送信</li></ol>
-<h3>メールなどで送る場合</h3>
-<ol><li>「<b>案内文をコピー</b>」を押す</li><li>本人あてのメールやメッセージに貼り付けて送る</li></ol>
+<p>各人の欄に、送るためのボタンが3つあります。</p>
+<table><tr><th>ボタン</th><th>動き</th></tr>
+<tr><td>プレビューしてLINEで送信</td><td>送る文を画面で確かめてから「LINEで送信」を押す。初めて送るとき、案内文を変えたあとに</td></tr>
+<tr><td>確認せずLINEで送信</td><td>文を見ずに、すぐLINEが開く。続けて何人にも送るときに</td></tr>
+<tr><td>案内文をコピー</td><td>文をコピーする。メールなど、LINE以外で送るときに貼り付ける</td></tr></table>
+<p>LINEが開いたら、送り先に<b>本人</b>を選び、送信します。</p>
 <p>送った方には「送信済み ✓」の印が付きます。この印は、送った端末だけに出ます。</p>
 <div class="warn"><b>送り先を間違えたとき・本人がスマホを替えたとき</b><br>その方の「再発行」を押してください。暗証番号が新しくなり、前の番号は使えなくなります。新しい番号で、もう一度本人に送ります。</div></div>
 
@@ -119,12 +121,12 @@ company = f'''
 
 emp = f'''
 <div class="card"><p style="margin-top:0">スマホで年末調整の内容を入力するアプリの使い方です。時間の目安は<b>10分ほど</b>です。途中で閉じても、続きから再開できます。</p>
-<div class="flow"><div class="b">① 入る<small>登録コード・<br>暗証番号</small></div><div class="a">→</div><div class="b">② 答える<small>本人・配偶者・<br>家族</small></div><div class="a">→</div><div class="b">③ 撮る<small>保険の<br>証明書</small></div><div class="a">→</div><div class="b">④ 提出<small>内容を見て<br>ボタンを押す</small></div></div>
+<div class="flow"><div class="b">① 入る<small>届いたリンクを<br>押す</small></div><div class="a">→</div><div class="b">② 答える<small>本人・配偶者・<br>家族</small></div><div class="a">→</div><div class="b">③ 撮る<small>保険の<br>証明書</small></div><div class="a">→</div><div class="b">④ 提出<small>内容を見て<br>ボタンを押す</small></div></div>
 <div class="toc"><a href="#s1">1 用意するもの</a><a href="#s2">2 入り方</a><a href="#s3">3 質問に答える</a><a href="#s4">4 証明書を撮る</a><a href="#s5">5 提出する</a><a href="#s6">6 途中でやめる・直す</a><a href="#s7">7 こんなときは</a></div></div>
 
 <div class="card">{h(1,'用意するもの','s1')}
 <table><tr><th>もの</th><th>だれが要るか</th></tr>
-<tr><td>会社から届いた案内（登録コード10桁・暗証番号6桁）</td><td>全員</td></tr>
+<tr><td>会社から届いた案内（入力ページのリンク）</td><td>全員</td></tr>
 <tr><td>生命保険・医療保険・個人年金の控除証明書</td><td>入っている方</td></tr>
 <tr><td>地震保険の控除証明書</td><td>入っている方</td></tr>
 <tr><td>国民年金・国民健康保険を自分で払った分の金額</td><td>払った方（国民年金は証明書も）</td></tr>
@@ -135,10 +137,13 @@ emp = f'''
 <p class="note">証明書は10月〜11月ごろに、保険会社などからハガキや封書で届きます。まだ届いていないものは、届いてからで構いません。</p></div>
 
 <div class="card">{h(2,'入り方','s2')}
-<ol><li>会社から届いた案内の<b>入力ページ</b>のURLを開く</li><li><b>登録コード</b>（数字10桁）を入れる。案内からコピーして貼り付けられます</li><li><b>暗証番号</b>（数字6桁）を入れる</li><li>「はじめに」を読んで「<b>同意して始める</b>」を押す</li></ol>
-<div class="scr"><div class="cap">画面の見本</div><div class="in" style="text-align:center"><div class="ttl" style="text-align:left">登録コードを入力</div><span class="big">9999000001</span><br><span style="font-size:12px;color:#666">暗証番号（会社から渡された6桁）</span><br><span class="big">482913</span></div></div>
-<ul><li>一度入ったスマホは、その後3日間は番号なしで開けます</li><li>3日を過ぎたら、同じ登録コードと暗証番号をもう一度入れます</li></ul>
-<div class="warn">登録コードと暗証番号は、ほかの人に見せないでください。この2つで、あなたの入力画面に入れます。</div></div>
+<ol><li>会社から届いた案内の「<b>入力ページ</b>」のリンクを押す</li><li>「はじめに」を読んで「<b>同意して始める</b>」を押す</li></ol>
+<p>リンクには、あなた専用の番号が入っています。番号を打つ必要はありません。</p>
+<h3>番号を聞かれたとき</h3>
+<p>パソコンで開いたとき、リンクが途中で切れたときは、番号を入れる画面が出ます。案内に書いてある<b>登録コード</b>（数字10桁）と<b>暗証番号</b>（数字6桁）を入れてください。</p>
+<div class="scr"><div class="cap">画面の見本（番号を聞かれたとき）</div><div class="in" style="text-align:center"><div class="ttl" style="text-align:left">登録コードを入力</div><span class="big">9999000001</span><br><span style="font-size:12px;color:#666">暗証番号（会社から渡された6桁）</span><br><span class="big">482913</span></div></div>
+<ul><li>一度入ったスマホは、その後3日間はそのまま開けます</li><li>3日を過ぎたら、同じリンクをもう一度押します</li></ul>
+<div class="warn">届いた案内は、ほかの人に見せたり転送したりしないでください。リンクを押すだけで、あなたの入力画面に入れます。</div></div>
 
 <div class="card">{h(3,'質問に答える','s3')}
 <p>1画面に1つずつ質問が出ます。選ぶか入力して「<b>次へ</b>」を押します。「戻る」で前の質問に戻れます。</p>
@@ -171,8 +176,8 @@ emp = f'''
 <tr><td>家族や会社のスマホ・パソコンで入力した</td><td>終わったら右上の「…」→「ログアウト」。次に開く人に中身が見えなくなります</td></tr></table></div>
 
 <div class="card">{h(7,'こんなときは','s7')}
-<details><summary>暗証番号が違うと出る</summary><p>会社から届いた案内の番号を、もう一度確かめてください。番号が作り直されていると、前の番号は使えません。分からないときは会社に「暗証番号の再発行」を頼んでください。</p></details>
-<details><summary>スマホを替えた</summary><p>新しいスマホで、同じ登録コードと暗証番号を入れれば続きから入力できます。入れないときは、会社に暗証番号の再発行を頼んでください。</p></details>
+<details><summary>「このリンクの暗証番号は使えなくなっています」「暗証番号が違う」と出る</summary><p>会社が番号を作り直すと、前の案内のリンクと番号は使えなくなります。会社から届いた一番新しい案内のリンクを押してください。届いていなければ、会社に案内の送り直しを頼んでください。</p></details>
+<details><summary>スマホを替えた</summary><p>新しいスマホで、同じ案内のリンクを押せば続きから入力できます。入れないときは、会社に暗証番号の再発行を頼んでください。</p></details>
 <details><summary>家族の収入が分からない</summary><p>本人に聞いて、1月から12月までの見込みを入れてください。パートやアルバイトの方は、給与明細の「総支給額」の合計が目安です。16歳未満のお子さんは入力不要です。</p></details>
 <details><summary>証明書がまだ届いていない</summary><p>届いている分だけ先に入れて、提出まで進めて構いません。届いたら、もう一度開いて写真を足し、再度「この内容で提出する」を押します。</p></details>
 <details><summary>証明書をなくした</summary><p>保険会社などに再発行を頼んでください。再発行が期限に間に合わないときは、会社にご相談ください。</p></details>
