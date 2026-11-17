@@ -34,6 +34,8 @@ function utf8ToSjisB64(text) { return Utilities.base64Encode(Utilities.newBlob('
 function icsRead(text) {
   var rows = csvParse(text);
   if (rows.length < 4) throw new Error('CSVの行数が足りません');
+  // 日本ICSの年末調整CSV（3行目が見出しで、先頭が「個人コード」、列が数百ある）以外は取り込まない。名簿のCSVを誤って入れると、氏名のない人ができてしまうため
+  if (String(rows[2][0] || '').replace(/^\uFEFF/, '').trim() !== '個人コード' || rows[2].length < 100) throw new Error('日本ICSの年末調整CSVではありません。氏名の名簿（CSV）は、会社用ページの「CSVでまとめて更新」から読み込んでください');
   return { meta: [rows[0], rows[1]], header: rows[2], rows: rows.slice(3) };
 }
 function icsRowToPrev(r) {
