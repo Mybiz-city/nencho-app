@@ -330,8 +330,9 @@ function resolveEmp(client, num) {
 }
 /** 個人コードの形（**000001）に合わせた次の番号 */
 function nextEmpCode(client) {
-  var s = summaryLoad(client), max = 0, prefix = '', width = 6;
-  for (var k in s) { var m = /^(\D*)(\d+)$/.exec(s[k].emp); if (!m) continue; if (parseInt(m[2], 10) > max) { max = parseInt(m[2], 10); prefix = m[1]; width = m[2].length; } }
+  var s = summaryLoad(client), max = 0, prefix = '', width = 6, any = false;
+  for (var k in s) { var m = /^(\D*)(\d+)$/.exec(s[k].emp); if (!m) continue; any = true; if (parseInt(m[2], 10) > max) { max = parseInt(m[2], 10); prefix = m[1]; width = m[2].length; } }
+  if (!any) prefix = '**'; // まだ誰もいない顧問先は、日本ICSの個人コードの形（**000001）で始める
   return prefix + ('000000000' + (max + 1)).slice(-width);
 }
 
