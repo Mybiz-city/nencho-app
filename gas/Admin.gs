@@ -121,6 +121,22 @@ function adminApi(a, p) {
       keys8[cl8] = { key: randomHex(16), issued_at: nowIso() }; jsonSave(rootFolder(), '_company_keys.json', keys8); audit('company key issued ' + cl8);
       return { ok: true, msg: '会社用ページのURLを用意しました（' + cl8 + '）。有効期限は90日です' };
     }
+    case 'client_clear': { // この顧問先の今年の名簿を空にする（取り込みをやり直すとき）。提出済みの人がいれば止める
+      var clc = four(p.client); if (clc.length !== 4 || String(p.confirm || '') !== clc) throw new Error('確認の顧問先コードが違います');
+      var rootc = rootFolder(), dirs = [], d1 = pathFolder([clc, String(c.year)], false); if (d1) dirs.push(d1);
+      cacheDel('fid:' + rootc.getId() + '/' + clc); var cdc = subFolder(rootc, clc, false); // 一時保存を捨てて、ドライブの実物を見直す（手作業でごみ箱に入れた跡が残っていても拾う）
+      if (cdc) { cacheDel('fid:' + cdc.getId() + '/' + c.year); var d2 = subFolder(cdc, String(c.year), false); if (d2 && (!d1 || d2.getId() !== d1.getId())) dirs.push(d2); }
+      dirs = dirs.filter(function (dir) { try { return !dir.isTrashed(); } catch (e) { return false; } }); // すでにごみ箱にある年フォルダは触らない
+      var targets = [];
+      dirs.forEach(function (dir) { var itc = dir.getFolders(); while (itc.hasNext()) { var fc = itc.next(), nmc = fc.getName(); if (nmc.charAt(0) === '_') continue;
+        var rc = jsonLoad(fc, 'answers.json'); if (rc && rc.status === 'submitted') throw new Error('提出済みの方がいるため、空にできません（' + nmc + '）');
+        targets.push({ dir: dir, f: fc, name: nmc }); } });
+      targets.forEach(function (t) { deviceUnbindAll(clc, t.name); t.f.setTrashed(true); cacheDel('fid:' + t.dir.getId() + '/' + t.name); });
+      dirs.forEach(function (dir) { fileDelete(dir, '_ics_meta.json'); jsonSave(dir, '_summary.json', {}); });
+      withLock(function () { homeUpdate(clc, c.year, {}); }); indexAdd(clc, c.year);
+      audit('client cleared ' + clc + ' ' + c.year + ' (' + targets.length + ')');
+      return { ok: true, msg: clc + ' の ' + c.year + ' 年分の名簿を空にしました（' + targets.length + ' 人分をごみ箱へ）。会社用ページのURLはそのまま使えます' };
+    }
     case 'assign_code': {
       var cl9 = four(p.client), old = String(p.old || ''), nw = String(p.new || '').trim();
       var od = empDir(cl9, old, false); if (!od) throw new Error('元のフォルダがありません');
