@@ -30,6 +30,7 @@ body.busy #gate button{opacity:.55;pointer-events:none}
 <p style="font-family:sans-serif;padding:30px"><?= ctx.error ?></p>
 <? } else { ?>
 <header><b><?= ctx.name ?></b><br><small><?= ctx.year ?>年 年末調整　在籍者の確認</small></header>
+<p id="manual" style="display:none;margin:0;padding:8px 16px 0;text-align:right;font-size:14px"><a target="_blank" rel="noopener" style="color:#007A67;font-weight:700">📖 このページの使い方</a></p>
 <div id="busy" role="status"><span class="ring"></span><span id="busyt">通信中…</span></div>
 <div class="wrap"><div id="msg" class="msg" style="display:none"></div>
 <div id="gate" class="card"><div class="wait"><span class="ring"></span>確認しています…</div></div>
@@ -55,6 +56,8 @@ body.busy #gate button{opacity:.55;pointer-events:none}
 <script>
 const CTX = { c: <?!= JSON.stringify(ctx.client) ?>, k: <?!= JSON.stringify(q.k || '') ?> }, YEAR = <?= ctx.year ?>;
 const $ = s => document.querySelector(s);
+// 使い方のページ（画面をGitHub Pagesに置いているときだけ出す）
+if (window.NENCHO) { try { const m=$('#manual'); m.querySelector('a').href=new URL('manual-company.html', location.href).href.split('?')[0]; m.style.display='block'; } catch(e){} }
 // 社長用の番号を確認できた端末の合鍵（この端末だけに覚える。URLを作り直すと無効になる）
 let DEV=''; try{ DEV=localStorage.getItem('nencho_cdev_'+CTX.c)||''; }catch(e){}
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

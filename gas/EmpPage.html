@@ -63,8 +63,9 @@ table.cmp tr.chg td{background:#FFF8E1}
 </head>
 <body>
 <header><b id="appName"><?= cfg.app_name ?></b><span><small id="who"></small> <button type="button" id="menu" class="b3" style="font-size:13px;padding:5px 10px;display:none">…</button></span></header>
-<div class="wrap"><div id="savest" style="text-align:right;font-size:12px;color:#666;margin:-6px 0 6px">入力は自動で保存されます。途中で閉じても続きから再開できます</div><div class="prog" id="prog"></div><div id="view"><div class="spin">読み込み中…</div></div></div>
+<div class="wrap"><div id="savest" style="text-align:right;font-size:12px;color:#666;margin:-6px 0 6px">入力は自動で保存されます。途中で閉じても続きから再開できます</div><div class="prog" id="prog"></div><div id="view"><div class="spin">読み込み中…</div></div><p id="manual" style="display:none;text-align:center;font-size:14px;margin:18px 0 8px"><a target="_blank" rel="noopener" style="color:var(--cd,#007A67);font-weight:700">📖 使い方を見る</a></p></div>
 <div class="nav" id="nav" style="display:none"><button class="b3" id="back">戻る</button><button class="b1" id="next">次へ</button></div>
+<script>/* 使い方のページ（画面をGitHub Pagesに置いているときだけ出す） */ if (window.NENCHO) { try { var _m=document.getElementById('manual'); _m.querySelector('a').href=new URL('manual-emp.html', location.href).href.split('?')[0]; _m.style.display='block'; } catch(e){} }</script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
 const LIFF_ID = <?!= JSON.stringify(cfg.liff_id) ?>;
