@@ -19,8 +19,9 @@ console.log(run('adminApi("client_clear",{_t:T,client:"9999",confirm:"9999"}).ms
 assert.strictEqual(run('adminApi("client",{_t:T,client:"9999"}).rows.length'), 0);
 assert.strictEqual(run('adminApi("home",{_t:T}).rows.filter(function(x){return x.client==="9999";})[0].n'), 0);
 // 4) 空にしたあと、会社用ページで名簿を読み込む → **＋社員番号
-assert.strictEqual(run('companyApi("bulk",{c:"9999",k:K,text:__r}).add'), 4);
-assert.deepStrictEqual(run('JSON.stringify(companyApi("list",{c:"9999",k:K}).rows.map(function(w){return w.emp+" "+w.code+" "+w.name;}))'), JSON.stringify(['**000001 9999000001 見本 一郎', '**000003 9999000003 見本 三郎', '**000004 9999000004 見本 四郎', '**000005 9999000005 見本 五郎']));
+run('var DEV = companyApi("pass_set",{c:"9999",k:K,pass:"246810"}).dev;'); // 会社用ページは、社長用の番号を通した端末だけが使える
+assert.strictEqual(run('companyApi("bulk",{c:"9999",k:K,dev:DEV,text:__r}).add'), 4);
+assert.deepStrictEqual(run('JSON.stringify(companyApi("list",{c:"9999",k:K,dev:DEV}).rows.map(function(w){return w.emp+" "+w.code+" "+w.name;}))'), JSON.stringify(['**000001 9999000001 見本 一郎', '**000003 9999000003 見本 三郎', '**000004 9999000004 見本 四郎', '**000005 9999000005 見本 五郎']));
 // 5) 提出済みの人がいると空にできない
 run('var r=loadRecord("9999","**000003"); r.status="submitted"; saveRecord(r,true);');
 assert.throws(() => run('adminApi("client_clear",{_t:T,client:"9999",confirm:"9999"})'), /提出済み/);
@@ -28,7 +29,7 @@ assert.strictEqual(run('adminApi("client",{_t:T,client:"9999"}).rows.length'), 4
 // 6) ドライブで年のフォルダを手でごみ箱に入れた跡（一時保存が古い場所を指す）があっても、空にしてやり直せる
 run('var r=loadRecord("9999","**000003"); r.status="new"; saveRecord(r,true); pathFolder(["9999","2026"],false).setTrashed(true);');
 run('adminApi("client_clear",{_t:T,client:"9999",confirm:"9999"})');
-assert.strictEqual(run('companyApi("bulk",{c:"9999",k:K,text:__r}).add'), 4);
+assert.strictEqual(run('companyApi("bulk",{c:"9999",k:K,dev:DEV,text:__r}).add'), 4);
 assert.strictEqual(run('pathFolder(["9999","2026"],false).isTrashed()'), false);
-assert.strictEqual(run('companyApi("list",{c:"9999",k:K}).rows.length'), 4);
+assert.strictEqual(run('companyApi("list",{c:"9999",k:K,dev:DEV}).rows.length'), 4);
 console.log('clear_test OK');
