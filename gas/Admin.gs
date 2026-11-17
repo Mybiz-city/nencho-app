@@ -180,7 +180,7 @@ function adminApi(a, p) {
       if (p.checked) r11.office_checked_at = nowIso(); else delete r11.office_checked_at;
       saveRecord(r11); return { ok: true, msg: '保存しました' };
     }
-    case 'pin_reissue': { var pr = pinReissue(four(p.client), String(p.emp || '')); audit('pin reissue by office ' + four(p.client) + '-' + p.emp); return { ok: true, msg: '暗証番号を発行し直しました：' + pr + '（前のスマホの合鍵は無効になりました）', pin: pr }; }
+    case 'pin_reissue': { var pr = pinReissue(four(p.client), String(p.emp || '')); audit('pin reissue by office ' + four(p.client) + '-' + p.emp); return { ok: true, msg: '暗証番号を発行し直しました：' + pr + '（前の暗証番号は使えなくなりました）', pin: pr }; }
     case 'audit_tail': {
       var root = rootFolder(); var nm2 = '_audit_' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMM') + '.log'; var f = fileIn(root, nm2);
       var ls = ((f ? f.getBlob().getDataAsString('UTF-8') : '') + (PropertiesService.getScriptProperties().getProperty('AUDIT_BUF') || '')).split('\n').filter(function (l) { return l; });

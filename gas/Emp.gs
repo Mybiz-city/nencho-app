@@ -21,15 +21,13 @@ function deviceBind(client, emp, tok) {
 function deviceUnbindAll(client, emp) {
   withLock(function () { var d = jsonLoad(rootFolder(), '_devices.json', {}); var n = 0; for (var k in d) if (d[k].client === client && d[k].emp === emp) { delete d[k]; n++; } if (n) jsonSave(rootFolder(), '_devices.json', d); });
 }
-/** ログイン直後の記録をまとめて書く（画面が出たあとに呼ばれる。1回だけ）。本人の入力（answers.json）には触らない＝入力の保存とぶつからない */
+/** ログイン直後の記録（暗証番号を使った印と回数・一覧の集計）をまとめて書く（画面が出たあとに呼ばれる。1回だけ）。本人の入力（answers.json）には触らない＝入力の保存とぶつからない */
 function loginAfterRun(t) {
   var key = 'loginafter:' + t, v = null; if (!cacheGet(key)) return false;
   withLock(function () { v = cacheGet(key); if (v) cacheDel(key); }); if (!v) return false; // 同時に2回呼ばれても、書くのは1回
-  var q = JSON.parse(v), who = sessionGet('emp', t); if (!who) return false;
+  var who = sessionGet('emp', t); if (!who) return false;
   var ed = empDir(who.client, who.emp, true), ro = jsonLoad(ed, 'roster.json', {});
   ro.pin_used = true; ro.pin_used_at = nowIso(); ro.pin_used_count = (ro.pin_used_count || 0) + 1; jsonSave(ed, 'roster.json', ro);
-  deviceBind(who.client, who.emp, q.dev);
-  if (q.uid) withLock(function () { var mp = jsonLoad(rootFolder(), '_line_map.json', {}); mp[q.uid] = { client: who.client, emp: who.emp, at: nowIso() }; jsonSave(rootFolder(), '_line_map.json', mp); });
   summaryUpdate(who.client, who.emp);
   return true;
 }
@@ -41,23 +39,9 @@ function empApi(a, p) {
   switch (a) {
     case 'config': { var c = cfg(); return { ok: true, app_name: c.app_name, color: c.brand_color, year: c.year, deadline: c.deadline_text, liff_id: c.liff_id, logged_in: !!who }; }
 
-    case 'device_login': { // このスマホの合鍵で入る
-      var dev = String(p.dev || ''); if (!dev) return { ok: true, known: false };
-      var d = devicesLoad()[sha256(dev)]; if (!d) return { ok: true, known: false };
-      if (Date.now() - new Date(d.at).getTime() > deviceDays() * 86400000) return { ok: true, known: false, expired: true, days: deviceDays() };
-      var ro = jsonLoad(empDir(d.client, d.emp, false), 'roster.json', {});
-      if ((ro.status || 'active') === 'retired') return { ok: true, known: false, retired: true };
-      var r = loadRecord(d.client, d.emp);
-      var t = sessionNew('emp', { client: d.client, emp: d.emp });
-      audit('device login ' + d.client + '-' + d.emp);
-      return { ok: true, known: true, _t: t, record: packRecord(r) };
-    }
-    case 'line_login': {
-      var uid = String(p.line_user_id || '').trim(); if (!uid) throw new Error('LINEのIDがありません');
-      var m = lineMapLoad()[uid]; if (!m) return { ok: true, known: false };
-      var r2 = loadRecord(m.client, m.emp); var t2 = sessionNew('emp', { client: m.client, emp: m.emp });
-      return { ok: true, known: true, _t: t2, record: packRecord(r2) };
-    }
+    // 自動ログインは廃止（開くたびに暗証番号を入れる方針）。古い画面がこの2つを呼んでも、入れない
+    case 'device_login': return { ok: true, known: false };
+    case 'line_login': return { ok: true, known: false };
     case 'login': {
       var pc = parseCode(p.code || ''); if (!pc) throw new Error('登録コードは数字で入れてください（例：9999000001）');
       var tk = 'code:' + pc.client + pc.num, tkc = 'client:' + pc.client;
@@ -77,10 +61,9 @@ function empApi(a, p) {
       // 記録（暗証番号を使った印・スマホの合鍵・一覧の集計）は、画面が出たあと login_after でまとめて書く
       throttleClear(tk); audit('login ok ' + pc.client + '-' + emp);
       var r3 = loadRecord(pc.client, emp);
-      var dtok = randomHex(24), uid2 = String(p.line_user_id || '').trim();
       var t3 = sessionNew('emp', { client: pc.client, emp: emp });
-      cachePut('loginafter:' + t3, JSON.stringify({ dev: dtok, uid: uid2 }), 3600);
-      return { ok: true, _t: t3, dev: dtok, after: true, record: packRecord(r3) };
+      cachePut('loginafter:' + t3, '1', 3600);
+      return { ok: true, _t: t3, after: true, record: packRecord(r3) }; // スマホの合鍵（自動ログイン）は発行しない
     }
     case 'login_after': { need(); loginAfterRun(p._t); return { ok: true }; }
     case 'logout': sessionDrop('emp', p._t); return { ok: true };
