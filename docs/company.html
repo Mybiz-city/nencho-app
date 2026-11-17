@@ -35,6 +35,8 @@ textarea{width:100%;box-sizing:border-box;font-size:15px;padding:8px;border:1px 
 
 <header><b id="ctxname">読み込み中…</b><br><small><span id="ctxyear"></span>年 年末調整　在籍者の確認</small></header>
 <div class="wrap"><div id="msg" class="msg" style="display:none"></div>
+<div id="gate" class="card" style="display:none"></div>
+<div id="main" style="display:none">
 <div class="card"><h2>お願い</h2><p style="margin:0;font-size:15px">今年の年末調整の対象者を確認してください。</p>
 <ol style="margin:6px 0 0;padding-left:22px;font-size:15px;line-height:1.7"><li><b>退職した方</b>：状態を「在籍 → 退職」にして、退職日を入れて保存</li><li><b>一覧にない方</b>：下の「一覧にない従業員を追加する」から追加</li><li><b>従業員への案内</b>：各人の「LINEで送る」か「案内文をコピー」で、本人にだけ送る</li></ol></div>
 <div class="card"><h2>従業員の一覧（<span id="cnt"></span>人）</h2><div id="list">読み込み中…</div>
@@ -49,11 +51,14 @@ textarea{width:100%;box-sizing:border-box;font-size:15px;padding:8px;border:1px 
 <details class="card"><summary style="cursor:pointer;color:#007A67;font-weight:700">人数が多い場合：CSVでまとめて更新（表計算ソフトに慣れた方向け）</summary><div style="margin-top:10px"><input type="file" id="bulk" accept=".csv,.CSV">　<button class="sm" onclick="bulk()">読み込む</button>
 <p class="note">Excelで作った表をCSVで保存して上げてください。1行目は見出し：<b>氏名</b>（必須）、フリガナ、入社日、退職日、生年月日、性別、社員番号（任意）。生年月日は空欄で構いません（本人がスマホで入力します）。社員番号か氏名が同じ人は更新、いない人は追加します。社員番号を入れると、その番号が登録コードの後ろ6桁になります。</p></div></details>
 </div>
+</div>
 <script>
 const _qs = new URLSearchParams(location.search); const CTX = { c: _qs.get('c') || '', k: _qs.get('k') || '' }, YEAR = window.NENCHO.year; document.getElementById('ctxyear').textContent = YEAR;
 const $ = s => document.querySelector(s);
+// 社長用の番号を確認できた端末の合鍵（この端末だけに覚える。URLを作り直すと無効になる）
+let DEV=''; try{ DEV=localStorage.getItem('nencho_cdev_'+CTX.c)||''; }catch(e){}
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const api = (a, body) => new Promise((res, rej) => { google.script.run.withSuccessHandler(j => { if (!j || !j.ok) { rej(new Error((j&&j.error)||'エラー')); return; } res(j); }).withFailureHandler(e => rej(new Error('通信に失敗しました：' + (e&&e.message||e)))).api('company.' + a, Object.assign({}, CTX, body || {})); });
+const api = (a, body) => new Promise((res, rej) => { google.script.run.withSuccessHandler(j => { if (!j || !j.ok) { rej(new Error((j&&j.error)||'エラー')); return; } res(j); }).withFailureHandler(e => rej(new Error('通信に失敗しました：' + (e&&e.message||e)))).api('company.' + a, Object.assign({}, CTX, { dev: DEV }, body || {})); });
 const toB64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });
 function msg(m){ const el=$('#msg'); el.textContent=m; el.style.display=m?'block':'none'; window.scrollTo(0,0); }
 const eras=[['令',2019],['平',1989],['昭',1926],['大',1912],['明',1868]];
@@ -100,8 +105,21 @@ async function bulk(){ const f=$('#bulk').files[0]; if(!f){ msg('CSVを選んで
     for(let i=0;i<body.length;i+=N){ msg('読み込み中… '+Math.min(i+N,body.length)+' / '+body.length+' 人（このまま閉じずにお待ちください）'); const last=i+N>=body.length; const j=await api('bulk',{text:[head].concat(body.slice(i,i+N)).join('\n'), norows:!last}); upd+=j.upd||0; add+=j.add||0; skip+=j.skip||0; warn=warn.concat(j.warn||[]); if(j.rows) rows=j.rows; }
     msg('読み込みが終わりました：更新 '+upd+' 人、追加 '+add+' 人、読み飛ばし '+skip+' 行'+(warn.length?'　読み飛ばした方：'+warn.join('、'):'')); if(rows) render(rows); else load();
   }catch(e){ msg('途中で止まりました：'+e.message+'　もう一度同じファイルを読み込めば、続きから追加されます'); } }
+// ---- 入口：社長用の番号（6桁）。初めて開いた人が決め、別の端末では入力する ----
+function showMain(){ $('#gate').style.display='none'; $('#main').style.display='block'; }
+function gateBox(h){ const g=$('#gate'); g.innerHTML=h; g.style.display='block'; $('#main').style.display='none'; const f=g.querySelector('input'); if(f) f.focus(); }
+const pinIn=(id,ph,fn)=>'<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" id="'+id+'" placeholder="'+ph+'" onkeydown="if(event.key===\'Enter\'){'+fn+'}" style="font-size:22px;letter-spacing:.3em;width:9em;text-align:center">';
+function gateSet(){ gateBox('<h2>最初に番号を決めてください</h2><p style="margin:0 0 8px">このページには、従業員の登録コードと暗証番号が並びます。URLがほかの人に渡っても開かないよう、<b>数字6桁</b>の番号を決めてください。</p><div class="row">'+pinIn('gp1','6桁',"document.getElementById('gp2').focus()")+'</div><div class="row">'+pinIn('gp2','もう一度','passSet()')+'</div><div class="row"><button onclick="passSet()">この番号に決める</button></div><p class="note">次から、この端末では番号を聞かれません。別のスマホやパソコンで開くときに、この番号を入れます。忘れたときは事務所にご連絡ください。</p>'); }
+function gateEnter(){ gateBox('<h2>番号を入れてください</h2><p style="margin:0 0 8px">このページを最初に開いたときに決めた、数字6桁の番号です。</p><div class="row">'+pinIn('gp1','6桁','passEnter()')+'</div><div class="row"><button onclick="passEnter()">開く</button></div><p class="note">番号を忘れたとき、決めた覚えがないときは、事務所にご連絡ください。</p>'); }
+function gateStop(m){ const n=document.getElementById('ctxname'); if(n&&n.textContent==='読み込み中…') n.textContent='開けません'; gateBox('<p style="margin:0;font-size:16px">'+esc(m)+'</p>'); }
+function keepDev(d){ DEV=d||''; try{ localStorage.setItem('nencho_cdev_'+CTX.c, DEV); }catch(e){} }
+async function passSet(){ const a=$('#gp1').value.trim(), b=$('#gp2').value.trim(); if(a!==b){ msg('2回の番号が違います。もう一度入れてください'); return; } try{ const j=await api('pass_set',{pass:a}); keepDev(j.dev); msg('番号を決めました。この端末では、次から聞かれません'); showMain(); load(); }catch(e){ msg(e.message); } }
+async function passEnter(){ try{ const j=await api('pass_enter',{pass:$('#gp1').value.trim()}); keepDev(j.dev); msg(''); showMain(); load(); }catch(e){ msg(e.message); const f=$('#gp1'); if(f){ f.value=''; f.focus(); } } }
+async function start(){ let g; try{ g=await api('gate'); }catch(e){ if(e.message==='不明な操作'){ showMain(); load(); return; } gateStop(e.message); return; } // 「不明な操作」＝裏側がまだ前の版。番号なしで今までどおり開く
+  if(g.name){ const n=document.getElementById('ctxname'); if(n) n.textContent=g.name; }
+  if(g.state==='ok'){ showMain(); load(); } else if(g.state==='set') gateSet(); else if(g.state==='locked') gateStop('番号の間違いが続いたため、このページを止めています。事務所にご連絡ください'); else gateEnter(); }
 $('#a_hire').innerHTML=dsel('ah','',YEAR-3,YEAR);
-load();
+start();
 </script>
 
 </body></html>

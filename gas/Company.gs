@@ -1,5 +1,10 @@
 // 会社（経営者）用：在籍者の確認・入社日退職日・新しい従業員の追加・暗証番号の確認と再発行
 // URL: ?p=company&c=顧問先コード&k=合言葉（事務所画面で発行。90日で期限切れ）
+// 守りは2段：①URLの合言葉　②社長用の番号（6桁。初めて開いた人が決める。同じ端末はURLの期限まで覚える）
+// このページには全従業員の登録コードと暗証番号が出るため、URLだけが漏れても開かないようにしている
+
+var COMPANY_PASS_MAX_FAIL = 20; // 続けてこの回数間違えたら、事務所が「やり直し」を押すまで止める
+var COMPANY_DEV_MAX = 20;       // 1社で覚える端末の数の上限（古い順に捨てる）
 
 function companyContext(c, k) {
   var client = four(c); var keys = jsonLoad(rootFolder(), '_company_keys.json', {}); var kk = keys[client];
@@ -12,8 +17,68 @@ function companyRows(client) {
   var s = summaryLoad(client); var y = cfg().year;
   return Object.keys(s).sort().map(function (k) { var e = s[k]; return { emp: e.emp, name: e.name, birth: e.birth, hire: e.hire, retire: e.retire, status: e.roster, app: e.status, pending: e.pending, code: client + codeDigits(e.emp), added: !!e.added, pin: e.pin, pin_used: e.pin_used, pin_used_count: e.pin_used_count || 0, device: e.device }; });
 }
+/** 社長用の番号の状態。set：まだ決めていない　enter：番号が要る　ok：この端末は確認済み　locked：間違いが続いて止まっている */
+function companyGate(client, p) {
+  var kk = (jsonLoad(rootFolder(), '_company_keys.json', {}) || {})[client] || {};
+  if (!kk.pass) return 'set';
+  var dev = String((p && p.dev) || '');
+  if (dev && kk.devs && kk.devs[sha256(dev)]) return 'ok';
+  if ((kk.pass_fail || 0) >= COMPANY_PASS_MAX_FAIL) return 'locked';
+  return 'enter';
+}
+/** この端末の合鍵を作って覚える（鍵そのものは保存せず、ハッシュだけ）。keys[client] を書き換える。保存は呼び出し側 */
+function companyDevAdd(kk) {
+  var tok = randomHex(24); kk.devs = kk.devs || {};
+  var hs = Object.keys(kk.devs).sort(function (x, y) { return kk.devs[x] < kk.devs[y] ? -1 : 1; });
+  while (hs.length >= COMPANY_DEV_MAX) delete kk.devs[hs.shift()];
+  kk.devs[sha256(tok)] = nowIso();
+  return tok;
+}
+function companyPassDigits(v) {
+  var pw = zenToHanDigits(v || '').replace(/\D/g, '');
+  if (pw.length !== 6) throw new Error('番号は数字6桁で入れてください');
+  return pw;
+}
+var COMPANY_LOCKED_MSG = '番号の間違いが続いたため、このページを止めています。事務所にご連絡ください';
 function companyApi(a, p) {
   var ctx = companyNeed(p); var client = ctx.client, year = cfg().year;
+  var gate = companyGate(client, p);
+  if (a === 'gate') return { ok: true, state: gate, name: ctx.name, year: ctx.year };
+  if (a === 'pass_set') { // 初めて開いた人が番号を決める（決められるのは1回だけ。やり直しは事務所画面から）
+    var pw = companyPassDigits(p.pass);
+    if (/^(\d)\1{5}$/.test(pw) || pw === '123456' || pw === '654321') throw new Error('この番号は当てられやすいので、別の番号にしてください');
+    var tok = null;
+    withLock(function () {
+      var keys = jsonLoad(rootFolder(), '_company_keys.json', {}); var k2 = keys[client];
+      if (!k2 || !safeEq(k2.key || '', String(p.k || ''))) throw new Error('このページは開けません。事務所から届いたURLをそのまま開いてください');
+      if (k2.pass) throw new Error('すでに番号が決められています。画面を開き直して、決めた番号を入れてください。心当たりがないときは、事務所にご連絡ください');
+      k2.pass = pwHash(pw); k2.pass_set_at = nowIso(); k2.pass_fail = 0; k2.devs = {}; tok = companyDevAdd(k2);
+      jsonSave(rootFolder(), '_company_keys.json', keys);
+    });
+    audit('company pass set ' + client);
+    return { ok: true, dev: tok };
+  }
+  if (a === 'pass_enter') { // 別の端末で開いたとき：決めた番号を入れる
+    if (gate === 'set') throw new Error('まだ番号が決められていません。画面を開き直してください');
+    if (gate === 'locked') throw new Error(COMPANY_LOCKED_MSG);
+    var tk = 'cpass:' + client;
+    if (!throttleOk(tk)) { audit('company pass locked ' + client); throw new Error('試行回数が多すぎます。15分ほど待ってからやり直してください'); }
+    var pw2 = companyPassDigits(p.pass), tok2 = null, bad = false, stop = false;
+    withLock(function () {
+      var keys = jsonLoad(rootFolder(), '_company_keys.json', {}); var k2 = keys[client] || {};
+      if (!pwVerify(pw2, k2.pass)) { bad = true; k2.pass_fail = (k2.pass_fail || 0) + 1; stop = k2.pass_fail >= COMPANY_PASS_MAX_FAIL; }
+      else { k2.pass_fail = 0; tok2 = companyDevAdd(k2); }
+      jsonSave(rootFolder(), '_company_keys.json', keys);
+    });
+    if (bad) {
+      throttleFail(tk, 5); audit('company pass mismatch ' + client + (stop ? ' (stopped)' : ''));
+      throw new Error(stop ? COMPANY_LOCKED_MSG : '番号が一致しません');
+    }
+    throttleClear(tk); audit('company pass ok ' + client);
+    return { ok: true, dev: tok2 };
+  }
+  // ここから下は、社長用の番号を確認できた端末だけ
+  if (gate !== 'ok') throw new Error(gate === 'locked' ? COMPANY_LOCKED_MSG : gate === 'set' ? 'このページを開き直して、最初に社長用の番号（6桁）を決めてください' : 'このページを開き直して、社長用の番号（6桁）を入れてください');
   switch (a) {
     case 'list': return { ok: true, rows: companyRows(client), ctx: ctx, tpl: (jsonLoad(clientDir(client), '_company_msg.json', {}) || {}).tpl || '' };
     case 'msg_save': { // 従業員への案内文（会社ごと）

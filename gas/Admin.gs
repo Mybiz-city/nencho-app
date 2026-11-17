@@ -44,7 +44,8 @@ function adminApi(a, p) {
       var list = Object.keys(s2).sort().map(function (k) { return s2[k]; });
       var kk = keys2[cl2] || null;
       return { ok: true, client: cl2, name: names2[cl2] || '', year: y2, cur_year: c.year, rows: list, next_code: nextEmpCode(cl2),
-        company: kk ? { url: pageUrl('company', 'c=' + cl2 + '&k=' + kk.key), issued_at: kk.issued_at, expires: addDays(kk.issued_at, 90) } : null };
+        company: kk ? { url: pageUrl('company', 'c=' + cl2 + '&k=' + kk.key), issued_at: kk.issued_at, expires: addDays(kk.issued_at, 90),
+          pass_set_at: kk.pass ? (kk.pass_set_at || '') : '', pass_set: !!kk.pass, pass_stopped: (kk.pass_fail || 0) >= COMPANY_PASS_MAX_FAIL, pass_fail: kk.pass_fail || 0, devs: Object.keys(kk.devs || {}).length } : null };
     }
     case 'emp': {
       var cl3 = four(p.client), y3 = yearOf(p), emp = String(p.emp || '');
@@ -119,7 +120,18 @@ function adminApi(a, p) {
     case 'company_key': {
       var cl8 = four(p.client); var keys8 = jsonLoad(rootFolder(), '_company_keys.json', {});
       keys8[cl8] = { key: randomHex(16), issued_at: nowIso() }; jsonSave(rootFolder(), '_company_keys.json', keys8); audit('company key issued ' + cl8);
-      return { ok: true, msg: '会社用ページのURLを用意しました（' + cl8 + '）。有効期限は90日です' };
+      return { ok: true, msg: '会社用ページのURLを用意しました（' + cl8 + '）。有効期限は90日です。社長用の番号は、社長が初めて開いたときに決めます' };
+    }
+    case 'company_pass_reset': { // 社長用の番号を白紙に戻す（忘れた・心当たりのない番号が決められていた・間違いが続いて止まった）
+      var cl9 = four(p.client), had = false;
+      withLock(function () {
+        var keys9 = jsonLoad(rootFolder(), '_company_keys.json', {}); var k9 = keys9[cl9];
+        if (!k9) throw new Error('会社用ページのURLがまだありません');
+        had = !!k9.pass; delete k9.pass; delete k9.pass_set_at; delete k9.pass_fail; delete k9.devs;
+        jsonSave(rootFolder(), '_company_keys.json', keys9);
+      });
+      throttleClear('cpass:' + cl9); audit('company pass reset ' + cl9);
+      return { ok: true, msg: '社長用の番号を白紙に戻しました（' + cl9 + '）。次にページを開いた方が、番号を決め直します' + (had ? '' : '（もともと未設定でした）') };
     }
     case 'assign_code': {
       var cl9 = four(p.client), old = String(p.old || ''), nw = String(p.new || '').trim();

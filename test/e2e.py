@@ -59,7 +59,8 @@ async def main():
         # 会社用ページ
         cl2=rpc('api','admin.client',{'_t':T,'client':'9999'}); curl=cl2['company']['url']
         co=await b.new_page(viewport={'width':600,'height':900}); co.on('pageerror', lambda e: errors.append('company:'+str(e)))
-        await co.goto(curl); await co.wait_for_selector('.it'); await co.wait_for_timeout(400); await co.screenshot(path=OUT+'c1_company.png')
+        await co.goto(curl); await co.wait_for_selector('#gp2'); await co.screenshot(path=OUT+'c0_company_gate.png'); await co.fill('#gp1','246810'); await co.fill('#gp2','246810'); await co.click('#gate button')  # 初回：社長用の番号を決める
+        await co.wait_for_selector('.it'); await co.wait_for_timeout(400); await co.screenshot(path=OUT+'c1_company.png')
         await b.close()
     print('errors:', errors)
 asyncio.run(main())
