@@ -45,7 +45,13 @@ function adminApi(a, p) {
       var kk = keys2[cl2] || null;
       return { ok: true, client: cl2, name: names2[cl2] || '', year: y2, cur_year: c.year, rows: list, next_code: nextEmpCode(cl2),
         company: kk ? { url: pageUrl('company', 'c=' + cl2 + '&k=' + kk.key), issued_at: kk.issued_at, expires: addDays(kk.issued_at, 90),
-          pass_set_at: kk.pass ? (kk.pass_set_at || '') : '', pass_set: !!kk.pass, pass_stopped: (kk.pass_fail || 0) >= COMPANY_PASS_MAX_FAIL, pass_fail: kk.pass_fail || 0, devs: Object.keys(kk.devs || {}).length } : null };
+          pass_set_at: kk.pass ? (kk.pass_set_at || '') : '', pass_set: !!kk.pass, pass_stopped: (kk.pass_fail || 0) >= COMPANY_PASS_MAX_FAIL, pass_fail: kk.pass_fail || 0, devs: Object.keys(kk.devs || {}).length } : null,
+        // 社長へ会社用ページを送るときの案内文に使うもの
+        deadline: c.deadline_text, manual_url: c.pages_url ? (c.pages_url.slice(-1) === '/' ? c.pages_url : c.pages_url + '/') + 'manual-company.html' : '', office_tpl: (jsonLoad(rootFolder(), '_office_msg.json', {}) || {}).tpl || '' };
+    }
+    case 'office_msg_save': { // 社長へ送る案内文の定型（事務所で1つ。全顧問先に共通）
+      var otp = String(p.tpl || '').substr(0, 2000); jsonSave(rootFolder(), '_office_msg.json', { tpl: otp, at: nowIso() }); audit('office msg ' + (otp ? 'saved' : 'reset'));
+      return { ok: true, msg: otp ? '社長へ送る案内文を保存しました' : '社長へ送る案内文を元の文に戻しました' };
     }
     case 'emp': {
       var cl3 = four(p.client), y3 = yearOf(p), emp = String(p.emp || '');
