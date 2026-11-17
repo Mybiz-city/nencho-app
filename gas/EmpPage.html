@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="robots" content="noindex">
+<meta name="description" content="年末調整の入力ページです。スマホで10分ほど。途中で閉じても続きから再開できます。">
+<meta property="og:title" content="年末調整の入力ページ">
+<meta property="og:description" content="スマホで10分ほど。途中で閉じても続きから再開できます。">
 <title><?= cfg.app_name ?></title>
 <style>
 :root{--c:<?= cfg.brand_color ?>;--cd:#007A67;--cl:#E3F4F0;--red:#C8372D;--g:#666;--bg:#f4f6f5}
@@ -78,6 +81,13 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const yen = n => (Number(n) || 0).toLocaleString('ja-JP') + '円';
 let TOKEN = sessionStorage.getItem('nencho_t') || '';
 const DEVKEY = 'nencho_dev';
+// 案内のリンクに付いた登録コードと暗証番号（…/#0000000000-000000）。「#」より後ろは通信に乗らない。読んだらすぐURL欄から消す
+let LINK = null; try{ const mm=/^#(\d{5,12})-(\d{6})$/.exec(location.hash||''); if(mm){ LINK={code:mm[1], pin:mm[2]}; history.replaceState(null,'',location.pathname+location.search); } }catch(e){}
+// いま入っている人が、リンクの人と同じか（同じなら入り直さない）
+function sameAsLink(){ try{ return !!(LINK && R && String(R.client)===LINK.code.substr(0,4) && parseInt(String(R.emp).replace(/\D/g,''),10)===parseInt(LINK.code.substr(4),10)); }catch(e){ return false; } }
+// リンクの番号で入る。だめなら、登録コードを入れた状態の入力画面に理由を出す
+async function linkLogin(){ const L=LINK; LINK=null; try{ const j=await api('login',{code:L.code, pin:L.pin, line_user_id: lineUid}); if(j.dev){ try{ localStorage.setItem(DEVKEY, j.dev); }catch(e){} } start(); }
+  catch(e){ loginView(/暗証番号/.test(e.message) ? 'このリンクの暗証番号は使えなくなっています。会社から届いた一番新しい案内のリンクを開くか、新しい暗証番号を入れてください' : e.message); const c=$('#code'); if(c){ c.value=L.code; if(/暗証番号/.test(e.message)){ $('#lpin').style.display='block'; } } } }
 const api = (a, body) => new Promise((res, rej) => {
   google.script.run.withSuccessHandler(j => { if (!j || !j.ok) { rej(new Error((j && j.error) || 'エラー')); return; } if (j._t) { TOKEN = j._t; sessionStorage.setItem('nencho_t', TOKEN); } if (j.record) R = j.record; res(j); })
     .withFailureHandler(e => rej(new Error('通信に失敗しました。電波の良いところでやり直してください（' + (e && e.message || e) + '）')))
@@ -433,8 +443,10 @@ function start(){
 (async()=>{
   try{
     if (LIFF_ID && window.liff) { try{ await liff.init({liffId:LIFF_ID}); if(!liff.isLoggedIn()){ liff.login(); return; } const prof=await liff.getProfile(); lineUid=prof.userId; const j=await api('line_login',{line_user_id:lineUid}); if(j.known){ start(); return; } }catch(e){ console.warn('LIFF', e); } }
-    if (TOKEN) { try{ await api('load'); start(); return; }catch(e){ TOKEN=''; sessionStorage.removeItem('nencho_t'); } }
+    if (TOKEN) { try{ await api('load'); if(!LINK || sameAsLink()){ LINK=null; start(); return; } }catch(e){ TOKEN=''; sessionStorage.removeItem('nencho_t'); } }
     let dev=''; try{ dev=localStorage.getItem(DEVKEY)||''; }catch(e){}
+    if (dev && LINK) { const j0=await api('device_login',{dev}); if(j0.known && sameAsLink()){ LINK=null; start(); return; } } // 同じ人のスマホなら、そのまま続きから
+    if (LINK) { await linkLogin(); return; }
     if (dev) { const j=await api('device_login',{dev}); if(j.known){ start(); return; } if(j.retired){ view.innerHTML='<div class="card"><p>退職された方は、この会社の年末調整の対象外です。源泉徴収票をもとにご自身で確定申告をしてください。</p></div>'; return; } try{ localStorage.removeItem(DEVKEY); }catch(e){} if(j.expired){ loginView('前に登録コードを入れてから'+j.days+'日たったため、安全のためログアウトしました。入力した内容は保存されています。もう一度、登録コードと暗証番号を入れてください'); return; } }
     loginView();
   }catch(e){ view.innerHTML = `<div class="card"><p class="err">${esc(e.message)}</p></div>`; }
