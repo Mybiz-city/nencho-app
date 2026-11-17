@@ -11,8 +11,8 @@ function packRecord(r) {
 function devicesLoad() { return jsonLoad(rootFolder(), '_devices.json', {}); }
 /** スマホの合鍵が有効な日数（暗証番号を入れてから）。スクリプト プロパティ DEVICE_DAYS で変更可 */
 function deviceDays() { var n = parseInt(PropertiesService.getScriptProperties().getProperty('DEVICE_DAYS') || '', 10); return n > 0 ? n : 3; }
-function deviceBind(client, emp) {
-  var tok = randomHex(24), h = sha256(tok);
+function deviceBind(client, emp, tok) {
+  tok = tok || randomHex(24); var h = sha256(tok);
   withLock(function () { var d = jsonLoad(rootFolder(), '_devices.json', {}); var lim = Date.now() - deviceDays() * 86400000;
     for (var k in d) if (new Date(d[k].at).getTime() < lim) delete d[k]; // 期限切れの合鍵は捨てる
     d[h] = { client: client, emp: emp, at: nowIso() }; jsonSave(rootFolder(), '_devices.json', d); });
@@ -20,6 +20,18 @@ function deviceBind(client, emp) {
 }
 function deviceUnbindAll(client, emp) {
   withLock(function () { var d = jsonLoad(rootFolder(), '_devices.json', {}); var n = 0; for (var k in d) if (d[k].client === client && d[k].emp === emp) { delete d[k]; n++; } if (n) jsonSave(rootFolder(), '_devices.json', d); });
+}
+/** ログイン直後の記録をまとめて書く（画面が出たあとに呼ばれる。1回だけ）。本人の入力（answers.json）には触らない＝入力の保存とぶつからない */
+function loginAfterRun(t) {
+  var key = 'loginafter:' + t, v = null; if (!cacheGet(key)) return false;
+  withLock(function () { v = cacheGet(key); if (v) cacheDel(key); }); if (!v) return false; // 同時に2回呼ばれても、書くのは1回
+  var q = JSON.parse(v), who = sessionGet('emp', t); if (!who) return false;
+  var ed = empDir(who.client, who.emp, true), ro = jsonLoad(ed, 'roster.json', {});
+  ro.pin_used = true; ro.pin_used_at = nowIso(); ro.pin_used_count = (ro.pin_used_count || 0) + 1; jsonSave(ed, 'roster.json', ro);
+  deviceBind(who.client, who.emp, q.dev);
+  if (q.uid) withLock(function () { var mp = jsonLoad(rootFolder(), '_line_map.json', {}); mp[q.uid] = { client: who.client, emp: who.emp, at: nowIso() }; jsonSave(rootFolder(), '_line_map.json', mp); });
+  summaryUpdate(who.client, who.emp);
+  return true;
 }
 function lineMapLoad() { return jsonLoad(rootFolder(), '_line_map.json', {}); }
 
@@ -61,22 +73,22 @@ function empApi(a, p) {
         throw new Error('この登録コードには暗証番号がまだありません。会社または事務所に「暗証番号」を発行してもらってください');
       }
       if (!safeEq(ro2.pin, pin)) { throttleFail(tk, 5); throttleFail(tkc, 30); audit('pin mismatch ' + tk); throw new Error('暗証番号が一致しません'); }
-      ro2.pin_used = true; ro2.pin_used_at = nowIso(); ro2.pin_used_count = (ro2.pin_used_count || 0) + 1; jsonSave(ed, 'roster.json', ro2);
+      // 暗証番号が合った。画面を早く出すため、ここではドライブに書かない（書き込みは1回1秒ほどかかる）。
+      // 記録（暗証番号を使った印・スマホの合鍵・一覧の集計）は、画面が出たあと login_after でまとめて書く
       throttleClear(tk); audit('login ok ' + pc.client + '-' + emp);
       var r3 = loadRecord(pc.client, emp);
-      var dtok = deviceBind(pc.client, emp); r3.device_bound_at = nowIso();
-      var uid2 = String(p.line_user_id || '').trim();
-      if (uid2) { withLock(function () { var mp = jsonLoad(rootFolder(), '_line_map.json', {}); mp[uid2] = { client: pc.client, emp: emp, at: nowIso() }; jsonSave(rootFolder(), '_line_map.json', mp); }); r3.line_user_id = uid2; }
-      if (r3.status === 'new') r3.status = 'in_progress';
-      saveRecord(r3);
+      var dtok = randomHex(24), uid2 = String(p.line_user_id || '').trim();
       var t3 = sessionNew('emp', { client: pc.client, emp: emp });
-      return { ok: true, _t: t3, dev: dtok, record: packRecord(r3) };
+      cachePut('loginafter:' + t3, JSON.stringify({ dev: dtok, uid: uid2 }), 3600);
+      return { ok: true, _t: t3, dev: dtok, after: true, record: packRecord(r3) };
     }
+    case 'login_after': { need(); loginAfterRun(p._t); return { ok: true }; }
     case 'logout': sessionDrop('emp', p._t); return { ok: true };
     case 'unbind': { var w0 = need(); deviceUnbindAll(w0.client, w0.emp); var rr = loadRecord(w0.client, w0.emp); delete rr.device_bound_at; saveRecord(rr); sessionDrop('emp', p._t); audit('device unbind by employee ' + w0.client + '-' + w0.emp); return { ok: true }; }
     case 'load': { var w = need(); return { ok: true, record: packRecord(loadRecord(w.client, w.emp)) }; }
     case 'save': {
-      var w1 = need(); var r4 = loadRecord(w1.client, w1.emp);
+      var w1 = need(); loginAfterRun(p._t); var r4 = loadRecord(w1.client, w1.emp);
+      if (r4.status === 'new') r4.status = 'in_progress'; if (!r4.device_bound_at) r4.device_bound_at = nowIso();
       if (p.answers && typeof p.answers === 'object') for (var k in p.answers) r4.answers[k] = p.answers[k];
       if (Array.isArray(p.family)) r4.family = p.family;
       if (p.consent) r4.consent_at = r4.consent_at || nowIso();
