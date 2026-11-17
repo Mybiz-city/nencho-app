@@ -68,8 +68,8 @@ function subFolder(parent, name, create) {
   if (id) return lazyFolder(id);
   var it = parent.getFoldersByName(name);
   var f = null;
-  if (it.hasNext()) f = it.next();
-  else if (create) f = parent.createFolder(name);
+  while (it.hasNext()) { var x = it.next(); if (!x.isTrashed()) { f = x; break; } } // ごみ箱に入れた同じ名前のフォルダは拾わない
+  if (!f && create) f = parent.createFolder(name);
   if (f) cachePut(key, f.getId(), 21600);
   return f;
 }
@@ -90,9 +90,9 @@ function fileIn(folder, name) {
   var key = 'file:' + folder.getId() + '/' + name;
   var id = cacheGet(key);
   if (id) { try { var f = DriveApp.getFileById(id); if (!f.isTrashed()) return f; } catch (e) {} cacheDel(key); }
-  var it = folder.getFilesByName(name);
-  if (!it.hasNext()) return null;
-  var f2 = it.next(); cachePut(key, f2.getId(), 21600); return f2;
+  var it = folder.getFilesByName(name), f2 = null;
+  while (it.hasNext()) { var y = it.next(); if (!y.isTrashed()) { f2 = y; break; } } // ごみ箱の中の同じ名前のファイルは拾わない
+  if (!f2) return null; cachePut(key, f2.getId(), 21600); return f2;
 }
 function jsonLoad(folder, name, def) {
   if (!folder) return def === undefined ? null : def;
@@ -239,7 +239,39 @@ function parseCode(code) {
 function codeDigits(emp) { return String(emp || '').replace(/\D/g, ''); }
 function safeEmp(emp) { return String(emp).replace(/[^\w\*\-]/g, '_'); }
 function clientDir(client, year) { return pathFolder([client, String(year || cfg().year)], false); }
-function empDir(client, emp, create, year) { return pathFolder([client, String(year || cfg().year), safeEmp(emp)], !!create); }
+// ---------- 個人フォルダと「まとめ置き」 ----------
+// 名簿CSV・前年CSVの取り込みでは、1人ずつフォルダとファイルを作らない（1人あたり2〜3秒かかるため）。
+// 全員分を顧問先・年のフォルダの _pending.json 1枚に置き、その人のフォルダは、本人が初めて入ったときなどに1回だけ作る。
+// フォルダがある人はフォルダの中身が正。_pending.json はフォルダがまだ無い人の分だけを見る
+function pendingLoad(client, year) { return jsonLoad(clientDir(client, year), '_pending.json', {}); }
+function pendingSave(client, year, pend) { jsonSave(pathFolder([client, String(year || cfg().year)], true), '_pending.json', pend); }
+function pendingDrop(client, emp, year) { var pend = pendingLoad(client, year), k = safeEmp(emp); if (pend[k]) { delete pend[k]; pendingSave(client, year, pend); } }
+/** その人のフォルダ（あれば）。無ければ null。作らない */
+function empDirPeek(client, emp, year) { return pathFolder([client, String(year || cfg().year), safeEmp(emp)], false); }
+/** その人の「まとめ置き」の中身 {ro, prev}。無ければ null */
+function empPending(client, emp, year) { return pendingLoad(client, year)[safeEmp(emp)] || null; }
+/** その人のフォルダ。まとめ置きにいる人は、ここで初めてフォルダを作る。create=true なら、どこにもいない人も新しく作る */
+function empDir(client, emp, create, year) {
+  var f = empDirPeek(client, emp, year); if (f) return f;
+  var pe = empPending(client, emp, year);
+  if (pe) return empMaterialize(client, emp, year, pe);
+  return create ? pathFolder([client, String(year || cfg().year), safeEmp(emp)], true) : null;
+}
+function empMaterialize(client, emp, year, pe) {
+  var out = null, y = String(year || cfg().year), key = safeEmp(emp);
+  withLock(function () { // 同時に2つの操作が来ても、フォルダは1つだけ
+    var cd = pathFolder([client, y], true), it = cd.getFoldersByName(key);
+    while (it.hasNext()) { var f0 = it.next(); if (!f0.isTrashed()) { cachePut('fid:' + cd.getId() + '/' + key, f0.getId(), 21600); out = lazyFolder(f0.getId()); return; } }
+    var ed = newSubFolder(cd, key);
+    jsonCreate(ed, 'roster.json', pe.ro || {}); if (pe.prev) jsonCreate(ed, 'prev.json', pe.prev);
+    out = ed;
+  });
+  return out;
+}
+/** その人のフォルダ（あれば）と、まとめ置きの中身（フォルダが無いとき）を1回で調べる */
+function empState(client, emp, year) { var ed = empDirPeek(client, emp, year); return { ed: ed, pe: ed ? null : empPending(client, emp, year) }; }
+/** その人の名簿の中身（roster.json）。フォルダが無ければ、まとめ置きから。フォルダは作らない */
+function empRoster(client, emp, year) { var ed = empDirPeek(client, emp, year); if (ed) return jsonLoad(ed, 'roster.json', {}); var pe = empPending(client, emp, year); return (pe && pe.ro) || {}; }
 function photosDir(empFolder, create) { return subFolder(empFolder, 'photos', !!create); }
 
 /** 顧問先・年の一覧（_summary.json）を読む */
@@ -248,7 +280,7 @@ function summaryLoad(client, year) { return jsonLoad(clientDir(client, year), '_
 function summaryUpdate(client, emp, year) {
   year = year || cfg().year;
   var cd = pathFolder([client, String(year)], true);
-  var ed = pathFolder([client, String(year), safeEmp(emp)], false);
+  var ed = empDir(client, emp, false, year);
   withLock(function () {
     var s = jsonLoad(cd, '_summary.json', {});
     if (!ed) { delete s[emp]; jsonSave(cd, '_summary.json', s); return; }
@@ -305,6 +337,7 @@ function summaryRebuild(client, year) {
   var cd = pathFolder([client, String(year)], true);
   var s = {}; var it = cd.getFolders();
   while (it.hasNext()) { var f = it.next(); var n = f.getName(); if (n.charAt(0) === '_') continue; s[n] = summaryRow(client, n, f); }
+  var pend = pendingLoad(client, year); for (var pk in pend) if (!s[pk]) s[pk] = summaryRowFrom(pk, null, pend[pk].prev || null, pend[pk].ro || {});
   jsonSave(cd, '_summary.json', s);
   withLock(function () { homeUpdate(client, year, s); });
   indexAdd(client, year);
@@ -342,13 +375,14 @@ function emptyRecord(client, emp) {
   return { client: client, emp: emp, year: cfg().year, status: 'new', consent_at: null, submitted_at: null, line_user_id: null,
     prev: null, answers: {}, family: [], certs: [], changes: [], computed: {} };
 }
-function loadRecord(client, emp) {
-  var ed = empDir(client, emp, true);
-  var r = jsonLoad(ed, 'answers.json');
+function loadRecord(client, emp, st) { // st：呼ぶ側がもう調べていれば、その結果 {ed, pe}（同じ問い合わせを2回しない）
+  var ed = st ? st.ed : empDirPeek(client, emp), pe = ed ? null : (st ? st.pe : empPending(client, emp)); // 読むだけなら、フォルダは作らない（作るのは最初に書くとき）
+  if (!ed && !pe) ed = empDir(client, emp, true);
+  var r = ed ? jsonLoad(ed, 'answers.json') : null;
   if (!r) {
-    r = emptyRecord(client, emp); var prev = jsonLoad(ed, 'prev.json');
+    r = emptyRecord(client, emp); var prev = ed ? jsonLoad(ed, 'prev.json') : (pe.prev || null);
     if (prev) r.prev = prev;
-    else { var ro0 = jsonLoad(ed, 'roster.json', {}); if (ro0.name) r.answers = { name: ro0.name, kana: ro0.kana || '', birth: ro0.birth || '', sex: ro0.sex || '' }; } // 会社が追加した人：名簿の氏名を引き継ぐ
+    else { var ro0 = ed ? jsonLoad(ed, 'roster.json', {}) : (pe.ro || {}); if (ro0.name) r.answers = { name: ro0.name, kana: ro0.kana || '', birth: ro0.birth || '', sex: ro0.sex || '' }; } // 会社が追加した人：名簿の氏名を引き継ぐ
   }
   if (r.prev_answers === undefined) {
     var nk = 'nolast:' + client + '/' + (cfg().year - 1) + '/' + safeEmp(emp); // 前の年のアプリ入力が無い人は、無いことを覚えておく（毎回ドライブに探しに行かない。前の年のフォルダは後から増えない）

@@ -109,13 +109,13 @@ function add(){ const name=$('#a_name').value.trim(), kana=$('#a_kana').value.tr
   addChain=addChain.then(async()=>{ try{ const j=await api('add',{name, kana, hire}); msg(j.msg); render(j.rows.concat(ROWS.filter(r=>r.tmp).slice(1))); }catch(e){ ROWS=ROWS.filter(r=>!(r.tmp&&r.name===name)); render(ROWS); msg(name+' さんを追加できませんでした：'+e.message); } }); }
 async function editRow(i){ const w=ROWS[i]; const name=prompt('氏名を直してください', w.name); if(name===null) return; if(!name.trim()){ msg('氏名を入れてください'); return; } try{ const j=await api('edit',{emp:w.emp, name:name.trim()}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
 async function removeRow(i){ const w=ROWS[i]; if(!confirm(w.name+' さんを一覧から削除します。この方の登録コードと暗証番号は使えなくなります。よろしいですか？')) return; const before=ROWS; ROWS=ROWS.filter(r=>r!==w); render(ROWS); msg(w.name+' さんを削除しています…'); try{ const j=await api('remove',{emp:w.emp}); delete SENT[w.emp]; msg(j.msg); render(j.rows.concat(ROWS.filter(r=>r.tmp))); }catch(e){ render(before); msg(e.message); } }
-// CSVは画面側で文字コードを直し、10人ずつに小分けして送る（途中経過を出す。長い処理で止まらないように）
+// CSVは画面側で文字コードを直し、50人ずつに小分けして送る（途中経過を出す。長い処理で止まらないように）
 // 名簿のCSV（先頭にBOMを付けて、Excelでそのまま開けるようにする）
 async function exportCsv(){ try{ const j=await api('export'); const url=URL.createObjectURL(new Blob(['\uFEFF'+j.csv],{type:'text/csv'})); const a=document.createElement('a'); a.href=url; a.download=j.filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000); msg('名簿をCSVで保存しました：'+j.filename); }catch(e){ msg(e.message); } }
 function decodeCsv(buf){ try{ return new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch(e){ return new TextDecoder('shift_jis').decode(buf); } }
 async function bulk(){ const f=$('#bulk').files[0]; if(!f){ msg('CSVを選んでください'); return; }
   try{ const lines=decodeCsv(await f.arrayBuffer()).replace(/^\uFEFF/,'').split(/\r\n|\n|\r/).filter(l=>l.trim()!==''); if(lines.length<2){ msg('データの行がありません'); return; }
-    const head=lines[0], body=lines.slice(1), N=10; let upd=0, add=0, skip=0, rows=null, warn=[];
+    const head=lines[0], body=lines.slice(1), N=50; let upd=0, add=0, skip=0, rows=null, warn=[];
     for(let i=0;i<body.length;i+=N){ msg('読み込み中… '+Math.min(i+N,body.length)+' / '+body.length+' 人（このまま閉じずにお待ちください）'); const last=i+N>=body.length; const j=await api('bulk',{text:[head].concat(body.slice(i,i+N)).join('\n'), norows:!last}); upd+=j.upd||0; add+=j.add||0; skip+=j.skip||0; warn=warn.concat(j.warn||[]); if(j.rows) rows=j.rows; }
     msg('読み込みが終わりました：更新 '+upd+' 人、追加 '+add+' 人、読み飛ばし '+skip+' 行'+(warn.length?'　読み飛ばした方：'+warn.join('、'):'')); if(rows) render(rows); else load();
   }catch(e){ msg('途中で止まりました：'+e.message+'　もう一度同じファイルを読み込めば、続きから追加されます'); } }

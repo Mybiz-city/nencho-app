@@ -64,24 +64,25 @@ function icsImport(client, text) {
   var d = icsRead(text), year = cfg().year;
   var cd = pathFolder([client, String(year)], true);
   jsonSave(cd, '_ics_meta.json', { meta: d.meta, header: d.header, imported_at: nowIso() });
-  var have = {}; listFolderNames(cd).forEach(function (n) { have[n] = 1; }); // 既にある人のフォルダ（問い合わせ1回）
+  var have = {}; listFolderNames(cd).forEach(function (n) { have[n] = 1; }); // 既にフォルダがある人（問い合わせ1回）
+  var pend = pendingLoad(client, year), pdirty = false; // フォルダがまだ無い人は、全員分を _pending.json 1枚に置く（1人ずつ作ると1人2〜3秒かかる）
   var codes = [], rows = {};
   d.rows.forEach(function (row) {
     var code = String(row[C.code] || '').trim(); if (code === '') return;
-    var prev = icsRowToPrev(row), key = safeEmp(code), isNew = !have[key];
-    var ed = isNew ? newSubFolder(cd, key) : pathFolder([client, String(year), key], true);
-    if (isNew) jsonCreate(ed, 'prev.json', prev); else jsonSave(ed, 'prev.json', prev);
-    var ro = isNew ? {} : jsonLoad(ed, 'roster.json', {});
+    var prev = icsRowToPrev(row), key = safeEmp(code), has = !!have[key];
+    var ed = has ? pathFolder([client, String(year), key], true) : null;
+    var ro = has ? jsonLoad(ed, 'roster.json', {}) : ((pend[key] && pend[key].ro) || {});
     var hire = warekiToIso(row[C.hire]), retire = warekiToIso(row[C.retire]), zai = String(row[C.zai] || '').trim();
     if (hire) ro.hire = hire;
     if (retire || zai.indexOf('退職') >= 0) { ro.status = 'retired'; if (retire) ro.retire = retire; ro.source = 'ics'; }
     else if (zai.indexOf('在職') >= 0) { ro.status = 'active'; ro.retire = ''; ro.source = 'ics'; }
     if (!ro.pin) { ro.pin = randomDigits(6); ro.pin_used = false; ro.pin_issued_at = nowIso(); } // 暗証番号（会社が本人に渡す）
     ro.ics_imported_at = nowIso();
-    if (isNew) jsonCreate(ed, 'roster.json', ro); else jsonSave(ed, 'roster.json', ro);
-    rows[key] = isNew ? summaryRowFrom(code, null, prev, ro) : summaryRowFrom(code, jsonLoad(ed, 'answers.json'), prev, ro);
-    have[key] = 1; codes.push(code);
+    if (has) { jsonSave(ed, 'prev.json', prev); jsonSave(ed, 'roster.json', ro); rows[key] = summaryRowFrom(code, jsonLoad(ed, 'answers.json'), prev, ro); }
+    else { pend[key] = { ro: ro, prev: prev }; pdirty = true; rows[key] = summaryRowFrom(code, null, prev, ro); }
+    codes.push(code);
   });
+  if (pdirty) pendingSave(client, year, pend);
   summaryMerge(client, year, rows); indexAdd(client, year);
   return codes;
 }
@@ -201,10 +202,10 @@ function icsExport(client, onlySubmitted, year, subset) {
     if (e.roster === 'retired') return;
     if (/^N/.test(String(e.emp))) return;
     if (onlySubmitted && e.status !== 'submitted') return;
-    var ed = pathFolder([client, String(year), k], false); if (!ed) return;
-    var r = jsonLoad(ed, 'answers.json');
+    var ed = empDirPeek(client, k, year), pe = ed ? null : empPending(client, k, year); if (!ed && !pe) return;
+    var r = ed ? jsonLoad(ed, 'answers.json') : null;
     if (!r || r.status === 'new' || !r.consent_at) { // まだ入力していない人：前年CSVの行をそのまま出す（判定で上書きしない）
-      var prev = (r && r.prev) || jsonLoad(ed, 'prev.json'); if (!prev || !prev.raw) return;
+      var prev = (r && r.prev) || (ed ? jsonLoad(ed, 'prev.json') : pe.prev); if (!prev || !prev.raw) return;
       var raw = prev.raw.slice(0, ICS_COLS); while (raw.length < ICS_COLS) raw.push(''); lines.push(raw); return;
     }
     lines.push(icsRowFromRecord(r));
