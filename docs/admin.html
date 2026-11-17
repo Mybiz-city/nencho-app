@@ -166,7 +166,7 @@ async function emp(cl, e){
   const r=j.record, a=r.answers||{}, p=r.prev||{}, c=r.computed, t=r.totals;
   const name = a.name || ((p.sei||'')+' '+(p.mei||''));
   let h = `<p><a onclick="client('${cl}')">← ${cl} の一覧</a></p><div class="card"><h2>${cl}-${esc(e)}　${esc(name)}　<span class="st ${r.status}">${stName[r.status]||r.status}</span></h2>
-  <p><small>同意 ${esc(r.consent_at||'—')}　提出 ${esc(r.submitted_at||'—')}　スマホ登録 ${r.device_bound_at?'あり':'なし'}　暗証番号 ${r.roster.pin?(r.roster.pin_used?'使用済み':esc(r.roster.pin)):'未発行'}</small></p>
+  <p><small>同意 ${esc(r.consent_at||'—')}　提出 ${esc(r.submitted_at||'—')}　ログイン ${r.device_bound_at?'あり':'なし'}　暗証番号 ${r.roster.pin?(r.roster.pin_used?'使用済み':esc(r.roster.pin)):'未発行'}</small></p>
   <label><input type="checkbox" id="chk" ${r.office_checked_at?'checked':''}> 事務所で確認した</label>　<input type="text" id="note" value="${esc(r.office_note||'')}" placeholder="メモ" size="40">　<small>生年月日：${esc(a.birth||p.birth||'未登録')}　訂正：<input type="date" id="birth"></small>　<button class="sm" onclick="run(()=>api('note',{client:'${cl}',emp:'${esc(e)}',note:$('#note').value,birth:$('#birth').value,checked:$('#chk').checked})).then(()=>emp('${cl}','${esc(e)}'))">保存</button>
   <p style="margin-top:8px"><button class="red sm" onclick="if(confirm('この人の今年の入力と写真をすべて消します。前年は残ります。よろしいですか？')) run(()=>api('reset_emp',{client:'${cl}',emp:'${esc(e)}'})).then(()=>emp('${cl}','${esc(e)}'))">今年の入力をリセット</button></p></div>`;
   h += `<div class="card"><h2>本人が訂正した項目</h2>${(r.changes||[]).length?'<ul>'+r.changes.map(ch=>`<li><small>${dt(ch.at)}</small> ${esc(ch.what)}</li>`).join('')+'</ul>':'<p><small>なし</small></p>'}</div>`;

@@ -278,7 +278,7 @@ function summaryRowFrom(emp, r, p, ro) {
     updated: (r && (r.submitted_at || r.updated_at)) || '',
     certs: certs, checked: !!(r && r.office_checked_at),
     roster: ro.status || 'active', hire: ro.hire || '', retire: ro.retire || '',
-    pin: ro.pin || '', pin_used: !!ro.pin_used, pin_used_count: ro.pin_used_count || 0, device: !!(r && r.device_bound_at),
+    pin: ro.pin || '', pin_used: !!ro.pin_used, pin_used_count: ro.pin_used_count || 0, device: !!((r && r.device_bound_at) || ro.pin_used),
     unknown_income: a.has_other_income === 'unknown', otsu: a.other_employer_decl === 'other',
     pending: /^N/.test(String((r && r.emp) || emp)), added: !!ro.added_by
   };
@@ -351,7 +351,9 @@ function loadRecord(client, emp) {
     else { var ro0 = jsonLoad(ed, 'roster.json', {}); if (ro0.name) r.answers = { name: ro0.name, kana: ro0.kana || '', birth: ro0.birth || '', sex: ro0.sex || '' }; } // 会社が追加した人：名簿の氏名を引き継ぐ
   }
   if (r.prev_answers === undefined) {
-    var last = jsonLoad(empDir(client, emp, false, cfg().year - 1), 'answers.json');
+    var nk = 'nolast:' + client + '/' + (cfg().year - 1) + '/' + safeEmp(emp); // 前の年のアプリ入力が無い人は、無いことを覚えておく（毎回ドライブに探しに行かない。前の年のフォルダは後から増えない）
+    var last = cacheGet(nk) ? null : jsonLoad(empDir(client, emp, false, cfg().year - 1), 'answers.json');
+    if (!last) cachePut(nk, '1', 21600);
     r.prev_certs = [];
     r.prev_answers = last ? { salary: (last.answers || {}).salary || null, submitted_at: last.submitted_at || null } : null;
     (last && last.certs || []).forEach(function (ct) { if (ct.kind === 'cert' && ct.status !== 'deleted') r.prev_certs.push({ cat: ct.cat || '', issuer: ct.issuer || '', items: ct.items || [] }); });

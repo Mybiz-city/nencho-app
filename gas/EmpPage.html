@@ -69,7 +69,6 @@ table.cmp tr.chg td{background:#FFF8E1}
 <div class="wrap"><div id="savest" style="text-align:right;font-size:12px;color:#666;margin:-6px 0 6px">入力は自動で保存されます。途中で閉じても続きから再開できます</div><div class="prog" id="prog"></div><div id="view"><div class="spin">読み込み中…</div></div><p id="manual" style="display:none;text-align:center;font-size:14px;margin:18px 0 8px"><a target="_blank" rel="noopener" style="color:var(--cd,#007A67);font-weight:700">📖 使い方を見る</a></p></div>
 <div class="nav" id="nav" style="display:none"><button class="b3" id="back">戻る</button><button class="b1" id="next">次へ</button></div>
 <script>/* 使い方のページ（画面をGitHub Pagesに置いているときだけ出す） */ if (window.NENCHO) { try { var _m=document.getElementById('manual'); _m.querySelector('a').href=new URL('manual-emp.html', location.href).href.split('?')[0]; _m.style.display='block'; } catch(e){} }</script>
-<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
 const LIFF_ID = <?!= JSON.stringify(cfg.liff_id) ?>;
 const YEAR = <?= cfg.year ?>;
@@ -81,13 +80,13 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const yen = n => (Number(n) || 0).toLocaleString('ja-JP') + '円';
 let TOKEN = sessionStorage.getItem('nencho_t') || '';
 const DEVKEY = 'nencho_dev';
-// 案内のリンクに付いた登録コードと暗証番号（…/#0000000000-000000）。「#」より後ろは通信に乗らない。読んだらすぐURL欄から消す
-let LINK = null; try{ const mm=/^#(\d{5,12})-(\d{6})$/.exec(location.hash||''); if(mm){ LINK={code:mm[1], pin:mm[2]}; history.replaceState(null,'',location.pathname+location.search); } }catch(e){}
-// いま入っている人が、リンクの人と同じか（同じなら入り直さない）
+// 案内のリンクに付いた登録コード（…/#0000000000）。「#」より後ろは通信に乗らない。読んだらURL欄から消す。
+// 以前の案内には「-暗証番号」も付いているが、暗証番号は読まない（開くたびに本人が入れる）
+const CODEKEY = 'nencho_code'; // この端末で最後に使った登録コード（入力の手間を省くためだけ。これだけでは入れない）
+let LINK = null; try{ const mm=/^#(\d{5,12})(?:-\d{6})?$/.exec(location.hash||''); if(mm){ LINK={code:mm[1]}; history.replaceState(null,'',location.pathname+location.search); localStorage.setItem(CODEKEY, mm[1]); } sessionStorage.removeItem('nencho_link'); localStorage.removeItem(DEVKEY); }catch(e){}
+function knownCode(){ if(LINK) return LINK.code; try{ return localStorage.getItem(CODEKEY)||''; }catch(e){ return ''; } }
+// いま入っている人が、リンクの人と同じか（同じタブで開き直したときだけ、入り直さない）
 function sameAsLink(){ try{ return !!(LINK && R && String(R.client)===LINK.code.substr(0,4) && parseInt(String(R.emp).replace(/\D/g,''),10)===parseInt(LINK.code.substr(4),10)); }catch(e){ return false; } }
-// リンクの番号で入る。だめなら、登録コードを入れた状態の入力画面に理由を出す
-async function linkLogin(){ const L=LINK; LINK=null; try{ const j=await api('login',{code:L.code, pin:L.pin, line_user_id: lineUid}); if(j.dev){ try{ localStorage.setItem(DEVKEY, j.dev); }catch(e){} } start(); }
-  catch(e){ loginView(/暗証番号/.test(e.message) ? 'このリンクの暗証番号は使えなくなっています。会社から届いた一番新しい案内のリンクを開くか、新しい暗証番号を入れてください' : e.message); const c=$('#code'); if(c){ c.value=L.code; if(/暗証番号/.test(e.message)){ $('#lpin').style.display='block'; } } } }
 const api = (a, body) => new Promise((res, rej) => {
   google.script.run.withSuccessHandler(j => { if (!j || !j.ok) { rej(new Error((j && j.error) || 'エラー')); return; } if (j._t) { TOKEN = j._t; sessionStorage.setItem('nencho_t', TOKEN); } if (j.record) R = j.record; res(j); })
     .withFailureHandler(e => rej(new Error('通信に失敗しました。電波の良いところでやり直してください（' + (e && e.message || e) + '）')))
@@ -425,12 +424,19 @@ function toast(m){ const t=document.createElement('div'); t.textContent=m; t.sty
 
 // ---------- 入口 ----------
 // ログアウト：この端末の合鍵を捨てる。入力内容はサーバーに残る
-window.doLogout = async () => { if(!confirm('ログアウトします。入力した内容は保存されています。次に開くときは、登録コードと暗証番号をもう一度入れてください。')) return; await flush(); api('unbind').catch(()=>{}); /* 返事は待たない。手元の合鍵を捨てた時点でこの端末からは入れない */ try{ localStorage.removeItem(DEVKEY); }catch(e){} sessionStorage.removeItem('nencho_t'); TOKEN=''; $('#menu').style.display='none'; $('#who').textContent=''; loginView('ログアウトしました'); };
+window.doLogout = async () => { if(!confirm('ログアウトします。入力した内容は保存されています。次に開くときは、登録コードと暗証番号を入れてください。')) return; await flush(); api('unbind').catch(()=>{}); /* 返事は待たない。手元の合鍵を捨てた時点でこの端末からは入れない */ try{ localStorage.removeItem(DEVKEY); localStorage.removeItem(CODEKEY); }catch(e){} sessionStorage.removeItem('nencho_t'); TOKEN=''; $('#menu').style.display='none'; $('#who').textContent=''; loginView('ログアウトしました'); };
 function loginView(msg){
-  $('#nav').style.display='none';
-  view.innerHTML = `<div class="card"><h1>登録コードを入力</h1><p>会社または事務所から配られた<b>登録コード</b>を入れてください。このスマホで初めて開くときだけ必要です。</p><input type="tel" id="code" inputmode="numeric" placeholder="例：0302000001" style="font-size:24px;letter-spacing:.08em;text-align:center"><div class="note" style="text-align:center">数字だけ（10桁）。LINEやメールで届いたコードを貼り付けてください。</div><div id="lpin" style="display:none"><label>暗証番号（会社から渡された6桁）</label><input type="tel" id="pin" inputmode="numeric" placeholder="例：123456" style="font-size:24px;letter-spacing:.2em;text-align:center"><div class="note">このスマホで初めて開くときに必要です。その後3日間は自動で入れます。番号は他の人に見せないでください。</div></div><div class="err" id="lerr">${esc(msg||'')}</div><div class="btns"><button class="b1" id="login">始める</button></div><p class="note" style="margin-top:14px">コードが分からないときは、お勤め先かメーティス税理士法人にお尋ねください。</p></div>`;
-  bindAllDates();
-  $('#login').onclick = async()=>{ $('#login').disabled=true; try{ const j=await api('login',{code:$('#code').value, pin:$('#pin').value, line_user_id: lineUid}); if(j.need_pin){ $('#lpin').style.display='block'; $('#lerr').textContent='本人確認のため、会社から渡された暗証番号（6桁）を入れてください'; $('#pin').focus(); } else { if(j.dev){ try{ localStorage.setItem(DEVKEY, j.dev); }catch(e){} } start(); } }catch(e){ $('#lerr').textContent=e.message; } const lb=$('#login'); if(lb) lb.disabled=false; };
+  $('#nav').style.display='none'; const kc=knownCode();
+  view.innerHTML = `<div class="card"><h1>${kc?'暗証番号を入力':'登録コードと暗証番号を入力'}</h1><p>${kc?'会社から届いた案内の<b>暗証番号（6桁）</b>を入れてください。':'会社から届いた案内の<b>登録コード</b>と<b>暗証番号</b>を入れてください。'}</p>
+    <label>登録コード（数字10桁）</label><input type="tel" id="code" inputmode="numeric" placeholder="例：0302000001" value="${esc(kc)}" style="font-size:${kc?'18px;color:#555;background:#f4f6f5':'24px'};letter-spacing:.08em;text-align:center">
+    <label>暗証番号（数字6桁）</label><input type="tel" id="pin" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="例：123456" style="font-size:26px;letter-spacing:.25em;text-align:center">
+    <div class="note">安全のため、開くたびに暗証番号を入れます。番号は他の人に見せないでください。</div>
+    <div class="err" id="lerr">${esc(msg||'')}</div><div class="btns"><button class="b1" id="login">始める</button></div><p class="note" style="margin-top:14px">番号が分からないときは、お勤め先にお尋ねください。</p></div>`;
+  bindAllDates(); const pf=$('#pin'), cf=$('#code'); try{ (kc?pf:cf).focus(); }catch(e){}
+  const go = async()=>{ const lb=$('#login'); if(lb.disabled) return; if(!cf.value.trim()){ $('#lerr').textContent='登録コードを入れてください'; return; } if(pf.value.replace(/\D/g,'').length!==6){ $('#lerr').textContent='暗証番号は数字6桁です'; return; }
+    lb.disabled=true; lb.textContent='確認しています…'; try{ const j=await api('login',{code:cf.value, pin:pf.value}); try{ localStorage.setItem(CODEKEY, cf.value.replace(/\D/g,'')); }catch(e){} LINK=null; start(); if(j.after) api('login_after').catch(()=>{}); }
+    catch(e){ $('#lerr').textContent=e.message; pf.value=''; const l2=$('#login'); if(l2){ l2.disabled=false; l2.textContent='始める'; } try{ pf.focus(); }catch(_){} } };
+  $('#login').onclick = go; pf.addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
 }
 function start(){
   $('#who').textContent = (R.answers.name || (R.prev&&R.prev.sei? R.prev.sei+' '+R.prev.mei:'')) + ' さん'; $('#menu').style.display='inline-block';
@@ -442,12 +448,8 @@ function start(){
 }
 (async()=>{
   try{
-    if (LIFF_ID && window.liff) { try{ await liff.init({liffId:LIFF_ID}); if(!liff.isLoggedIn()){ liff.login(); return; } const prof=await liff.getProfile(); lineUid=prof.userId; const j=await api('line_login',{line_user_id:lineUid}); if(j.known){ start(); return; } }catch(e){ console.warn('LIFF', e); } }
-    if (TOKEN) { try{ await api('load'); if(!LINK || sameAsLink()){ LINK=null; start(); return; } }catch(e){ TOKEN=''; sessionStorage.removeItem('nencho_t'); } }
-    let dev=''; try{ dev=localStorage.getItem(DEVKEY)||''; }catch(e){}
-    if (dev && LINK) { const j0=await api('device_login',{dev}); if(j0.known && sameAsLink()){ LINK=null; start(); return; } } // 同じ人のスマホなら、そのまま続きから
-    if (LINK) { await linkLogin(); return; }
-    if (dev) { const j=await api('device_login',{dev}); if(j.known){ start(); return; } if(j.retired){ view.innerHTML='<div class="card"><p>退職された方は、この会社の年末調整の対象外です。源泉徴収票をもとにご自身で確定申告をしてください。</p></div>'; return; } try{ localStorage.removeItem(DEVKEY); }catch(e){} if(j.expired){ loginView('前に登録コードを入れてから'+j.days+'日たったため、安全のためログアウトしました。入力した内容は保存されています。もう一度、登録コードと暗証番号を入れてください'); return; } }
+    // 同じタブで開き直したとき（再読み込みなど）だけ、続きから。タブを閉じたら、次は暗証番号から
+    if (TOKEN) { try{ await api('load'); if(!LINK || sameAsLink()){ LINK=null; start(); return; } }catch(e){} TOKEN=''; sessionStorage.removeItem('nencho_t'); }
     loginView();
   }catch(e){ view.innerHTML = `<div class="card"><p class="err">${esc(e.message)}</p></div>`; }
 })();
