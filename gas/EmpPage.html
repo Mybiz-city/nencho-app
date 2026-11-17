@@ -60,6 +60,9 @@ table.cmp th,table.cmp td{border-bottom:1px solid #eee;padding:7px 4px;text-alig
 table.cmp th{color:var(--g);font-weight:400;width:32%}
 table.cmp tr.chg td{background:#FFF8E1}
 .spin{text-align:center;padding:30px;color:var(--g)}
+.spin::before{content:"";display:block;width:38px;height:38px;margin:0 auto 14px;border:4px solid #dde8e5;border-top-color:var(--c);border-radius:50%;animation:spin .9s linear infinite}
+.ring{display:inline-block;width:12px;height:12px;border:2px solid #cfe5df;border-top-color:var(--c);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:6px}
+.b1 .ring{border-color:rgba(255,255,255,.45);border-top-color:#fff;width:15px;height:15px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .fin{text-align:center;padding:30px 10px}.fin .ok{font-size:54px;color:var(--c)}
 </style>
@@ -101,7 +104,7 @@ const applyLocal = (answers, extra) => { if (answers) Object.assign(R.answers, a
 const saveWait = async (answers, extra) => { await flush(); return api('save', Object.assign({answers, step: steps[idx]?.id}, extra || {})); };
 // 判定（扶養・配偶者の区分）は手元でも計算できる（静的版に Judge.gs を同梱）。無ければサーバーの返事を待つ
 const recompute = () => { if (window.judgeCompute) { try { R.computed = window.judgeCompute(R); } catch (e) {} } };
-const saveSt = t => { const e=$('#savest'); if(e) e.textContent=t; };
+const saveSt = t => { const e=$('#savest'); if(!e) return; e.textContent=t; if(/…$/.test(t)) e.insertAdjacentHTML('afterbegin','<span class="ring"></span>'); }; // 「保存中…」のあいだは、小さな輪を回す
 const save = (answers, extra) => {
   R._fresh = false; applyLocal(answers, extra); recompute();
   pendingSaves.push(Object.assign({answers: answers || {}, step: steps[idx]?.id}, extra || {}));
@@ -164,14 +167,15 @@ function buildSteps(){
     <p>氏名・フリガナ・性別・住所に変わりはありませんか？</p>${big('p_changed',[['no','変わりない'],['yes','変わった']], a.p_changed)}` : `<p>氏名・住所などを入力してください。</p>${selfForm()}`,
     next: async()=>{ if(hasPrev){ const v=pick('p_changed'); if(!v) throw new Error('どちらかを選んでください'); await save({p_changed:v}); } else { await save(readSelf()); } }});
   if (hasPrev && a.p_changed === 'yes') s.push({id:'p_edit', sec:1, title:'新しい氏名・住所', html:()=>selfForm(), next: async()=>{ await save(readSelf(), {change:'本人の氏名・住所を変更'}); }});
-  s.push({id:'p_head', sec:1, title:'世帯主', html:()=>`<p>あなたは世帯主ですか？</p>${big('head_is_self',[['yes','はい（本人）'],['no','いいえ']], a.head_is_self ?? prevHeadIsSelf())}
-    <div id="headbox" style="display:${(a.head_is_self ?? prevHeadIsSelf())==='no'?'block':'none'}"><label>世帯主の氏名</label><input type="text" id="head_name" value="${esc(a.head_name ?? (p.head?.sei? p.head.sei+' '+p.head.mei:''))}" placeholder="山田 太郎"><label>あなたから見た続柄</label>${relSelect('head_rel', a.head_rel ?? ((p.head?.rel&&p.head.rel!=='本人')?p.head.rel:'夫'), headRelOpts)}<div class="note">「本人」を選ぶと、世帯主はあなた自身になります。</div></div>
+  s.push({id:'p_head', sec:1, title:'世帯主', html:()=>`<p>あなたは世帯主ですか？</p>${prevHeadIsSelf()?`<div class="prev"><b>前年の登録</b><br>${prevHeadIsSelf()==='yes'?'本人':esc((p.head.sei||'')+' '+(p.head.mei||''))+(p.head.rel?'（'+esc(p.head.rel)+'）':'')}<br><span class="note">今年も同じなら、同じほうを押してください。</span></div>`:''}${big('head_is_self',[['yes','はい（本人）'],['no','いいえ']], a.head_is_self)}
+    <div id="headbox" style="display:${a.head_is_self==='no'?'block':'none'}"><label>世帯主の氏名</label><input type="text" id="head_name" value="${esc(a.head_name ?? (p.head?.sei? p.head.sei+' '+p.head.mei:''))}" placeholder="山田 太郎"><label>あなたから見た続柄</label>${relSelect('head_rel', a.head_rel ?? ((p.head?.rel&&p.head.rel!=='本人')?p.head.rel:'夫'), headRelOpts)}<div class="note">「本人」を選ぶと、世帯主はあなた自身になります。</div></div>
     <div class="hint">住民票の世帯主欄に書かれている方です。一人暮らしなら本人です。</div>`,
     mount:()=>{ document.querySelectorAll('[data-k=head_is_self]').forEach(b=>b.addEventListener('click',()=>{$('#headbox').style.display=b.dataset.v==='no'?'block':'none';})); },
     next: async()=>{ const v=pick('head_is_self'); if(!v) throw new Error('どちらかを選んでください'); const o={head_is_self:v}; if(v==='no'){ o.head_rel=relValue('head_rel'); if(o.head_rel==='本人'){ o.head_is_self='yes'; } else { o.head_name=$('#head_name').value.trim(); if(!o.head_name) throw new Error('世帯主の氏名を入れてください'); } } await save(o); }});
-  s.push({id:'p_salary', sec:1, title:'今年の給与収入', html:()=>`<p>今年（1〜12月）にお勤め先から受ける給与・賞与の<b>見込み額</b>を入れてください。</p>${(R.prev_answers&&R.prev_answers.salary)?`<div class="prev">前年にアプリで入力した見込み：${yen(R.prev_answers.salary)}</div>`:(p.salary_total?`<div class="prev">前年の給与・賞与の実績：${yen(p.salary_total)}<br><span class="note">同じくらいなら、そのまま「次へ」。変わるなら直してください。</span></div>`:'')}<div class="yen"><input type="tel" id="salary" value="${esc(a.salary || (R.prev_answers&&R.prev_answers.salary) || p.salary_total || '')}" placeholder="例：3,500,000"></div>
-    <div class="hint">税込の総支給額です。交通費などの非課税分は除きます。給与明細の「総支給額」を12か月分足した目安で構いません。1円単位でなくても大丈夫です。</div>`,
-    next: async()=>{ const v=Number($('#salary').value.replace(/[^\d]/g,'')); if(!v) throw new Error('金額を入れてください'); await save({salary:v}); }});
+  s.push({id:'p_salary', sec:1, title:'今年の給与収入', html:()=>`<p>今年（1〜12月）にお勤め先から受ける給与・賞与の<b>見込み額</b>を入れてください。</p>${(R.prev_answers&&R.prev_answers.salary)?`<div class="prev">前年にアプリで入力した見込み：${yen(R.prev_answers.salary)}</div>`:(p.salary_total?`<div class="prev">前年の給与・賞与の実績：${yen(p.salary_total)}</div>`:'')}<div class="yen"><input type="tel" id="salary" value="${esc(a.salary || (R.prev_answers&&R.prev_answers.salary) || p.salary_total || '')}" placeholder="例：3,500,000"></div>
+    <div class="hint">税込の総支給額です。交通費などの非課税分は除きます。給与明細の「総支給額」を12か月分足した目安で構いません。1円単位でなくても大丈夫です。</div>${(!a.salary && salaryPrefill())?`<p style="margin-top:14px">上の金額は、前年の数字を入れてあります。今年の見込みとして、どちらですか？</p>${big('salary_ok',[['same','この金額でよい'],['edit','金額を直す']], undefined)}`:''}`,
+    mount:()=>{ document.querySelectorAll('[data-k=salary_ok]').forEach(b=>b.addEventListener('click',()=>{ if(b.dataset.v==='edit'){ const i=$('#salary'); i.focus(); try{ i.select(); }catch(e){} } })); },
+    next: async()=>{ const v=Number($('#salary').value.replace(/[^\d]/g,'')); if(!v) throw new Error('金額を入れてください'); const pre=!a.salary && salaryPrefill(); if(pre && v===pre && pick('salary_ok')!=='same') throw new Error('「この金額でよい」を押すか、金額を直してください'); await save({salary:v}); }});
   s.push({id:'p_other', sec:1, title:'給与以外の収入', html:()=>`<p>今年、給与以外の収入（年金、事業、不動産、副業など）はありますか？</p>${big('has_other_income',[['no','ない'],['yes','ある'],['unknown','あるが、金額の見積もりが難しい']], a.has_other_income)}
     <div id="oibox" style="display:${a.has_other_income==='yes'?'block':'none'}">${incomesHtml('oi', (a.other_incomes||[]).length? a.other_incomes : [{type:'pension',amount:''}])}</div>
     <div id="oiunk" class="hint" style="display:${a.has_other_income==='unknown'?'block':'none'}">年末調整は給与分で行い、給与以外の所得はご自身で確定申告してください（給与以外の所得が20万円を超える方は、もともと確定申告が必要です）。</div>`,
@@ -183,14 +187,19 @@ function buildSteps(){
     mount:()=>{ document.querySelectorAll('[data-k=other_employer]').forEach(b=>b.addEventListener('click',()=>{$('#e2box').style.display=b.dataset.v==='yes'?'block':'none';})); },
     next: async()=>{ const v=pick('other_employer'); if(!v) throw new Error('どちらかを選んでください'); const d=v==='yes'? pick('other_employer_decl'):'here'; if(v==='yes'&&!d) throw new Error('どちらに出すか選んでください'); await save({other_employer:v, other_employer_decl:d}); }});
   if (a.other_employer_decl==='other') { s.push({id:'p_otsu', sec:5, title:'この会社では年末調整をしません', html:()=>`<p>扶養控除等申告書を別の勤務先に出す場合、この会社では年末調整を行いません（給与は乙欄で計算します）。</p><p>ご自身で確定申告をしてください。この画面で「提出」を押すと、その旨が事務所に伝わります。</p><div class="hint">入力を間違えた場合は「戻る」で直せます。</div>`, nextLabel:'この内容で提出する', next: async()=>{ waitOn('提出しています'); try{ await flush(); await api('submit'); } finally { waitOff(); } }}); s.push({id:'r_done', sec:5, title:'提出しました', html:()=>`<div class="fin"><div class="ok">✓</div><h2>送信しました</h2><p class="note">この会社では年末調整を行いません。確定申告の時期にご相談ください。</p></div>`, last:true}); return s; }
-  s.push({id:'p_flags', sec:1, title:'障害・寡婦・ひとり・勤労', html:()=>{ const f=a.self_flags||{}; return `<p>障害者・寡婦・ひとり親・勤労学生の4つは、当てはまる方だけ控除が増える項目です。<b>当てはまるものがあれば</b>選んでください。</p><p class="note">ほとんどの方は当てはまりません。その場合は何も選ばず「次へ」。</p>
+  s.push({id:'p_flags', sec:1, title:'障害・寡婦・ひとり・勤労', html:()=>{ const f=a.self_flags||{}; const any=!!((f.disability&&f.disability!=='none')||f.kafu||f.hitorioya||f.student); const cur=a.self_flags_has || (any?'yes':undefined);
+    return `<p>障害者・寡婦・ひとり親・勤労学生の4つは、当てはまる方だけ控除が増える項目です。あなたは、どれかに当てはまりますか？</p><p class="note">ほとんどの方は「該当なし」です。</p>${big('self_flags_has',[['no','該当なし'],['yes','当てはまるものがある']], cur)}
+    <div id="flbox" style="display:${cur==='yes'?'block':'none'}"><p class="note">当てはまるものを選んでください。</p>
     <label>障害者</label><select id="f_dis"><option value="none">該当しない</option><option value="general" ${f.disability==='general'?'selected':''}>障害者</option><option value="special" ${f.disability==='special'?'selected':''}>特別障害者（重度）</option></select>
     <div id="f_dis_box" style="display:${f.disability&&f.disability!=='none'?'block':'none'}"><label>手帳の種類・等級</label><input type="text" id="f_dis_text" value="${esc(f.disability_text||'')}" placeholder="例：身体障害者手帳 3級"><div class="note">あとで手帳の写真を撮る画面があります</div></div>
     <div class="chk"><input type="checkbox" id="f_kafu" ${f.kafu?'checked':''}><span>寡婦（夫と死別・離別し、扶養する家族がいる。所得500万円以下）</span></div>
     <div class="chk"><input type="checkbox" id="f_hitori" ${f.hitorioya?'checked':''}><span>ひとり親（子を一人で育てている。所得500万円以下）</span></div>
-    <div class="chk"><input type="checkbox" id="f_student" ${f.student?'checked':''}><span>勤労学生（学生で年収163万円以下）</span></div>`; },
-    mount:()=>{ $('#f_dis').addEventListener('change',()=>{$('#f_dis_box').style.display=$('#f_dis').value!=='none'?'block':'none';}); },
-    next: async()=>{ const sf={disability:$('#f_dis').value, disability_text:$('#f_dis_text').value.trim(), kafu:$('#f_kafu').checked, hitorioya:$('#f_hitori').checked, student:$('#f_student').checked}; save({self_flags:sf}); const inc=((R.computed||{}).self||{}).total_income||0; if((sf.kafu||sf.hitorioya)&&inc>5000000) toast('寡婦・ひとり親控除は、本人の所得が500万円以下の方が対象です。今年の見込みでは対象外になる見込みです。'); else if(sf.student&&inc>890000) toast('勤労学生控除は、所得89万円以下の方が対象です。今年の見込みでは対象外です。'); }});
+    <div class="chk"><input type="checkbox" id="f_student" ${f.student?'checked':''}><span>勤労学生（学生で年収163万円以下）</span></div></div>`; },
+    mount:()=>{ $('#f_dis').addEventListener('change',()=>{$('#f_dis_box').style.display=$('#f_dis').value!=='none'?'block':'none';}); document.querySelectorAll('[data-k=self_flags_has]').forEach(b=>b.addEventListener('click',()=>{$('#flbox').style.display=b.dataset.v==='yes'?'block':'none';})); },
+    next: async()=>{ const has=pick('self_flags_has'); if(!has) throw new Error('「該当なし」か「当てはまるものがある」を押してください');
+      const sf= has==='no' ? {disability:'none', disability_text:'', kafu:false, hitorioya:false, student:false} : {disability:$('#f_dis').value, disability_text:$('#f_dis_text').value.trim(), kafu:$('#f_kafu').checked, hitorioya:$('#f_hitori').checked, student:$('#f_student').checked};
+      if(has==='yes' && sf.disability==='none' && !sf.kafu && !sf.hitorioya && !sf.student) throw new Error('当てはまるものを選んでください（無ければ「該当なし」を押してください）');
+      save({self_flags:sf, self_flags_has:has}); const inc=((R.computed||{}).self||{}).total_income||0; if((sf.kafu||sf.hitorioya)&&inc>5000000) toast('寡婦・ひとり親控除は、本人の所得が500万円以下の方が対象です。今年の見込みでは対象外になる見込みです。'); else if(sf.student&&inc>890000) toast('勤労学生控除は、所得89万円以下の方が対象です。今年の見込みでは対象外です。'); }});
   if ((a.self_flags||{}).disability && a.self_flags.disability!=='none') s.push(photoStep('p_dis_photo',1,'障害者手帳の写真','手帳の表面（氏名・手帳の種類・等級が分かる面）を撮ってください。読み取った種類と等級は「障害・寡婦・ひとり・勤労」の欄に入ります。','techo'));
   s.push({id:'p_since', sec:1, title:'今年の在籍', html:()=>`<p>今年の1月1日から、この会社に在籍していますか？</p>${big('since_jan',[['yes','はい'],['no','いいえ']], a.since_jan)}
     <div id="pibox" style="display:${a.since_jan==='no'?'block':'none'}"><p style="margin-top:14px">今年の1月以降に、前の勤務先から給与の支払いがありましたか？</p>${big('prev_income',[['no','なかった'],['yes','あった']], a.prev_income)}
@@ -201,26 +210,28 @@ function buildSteps(){
 
   // 2 配偶者
   const sp = a.spouse || {}, psp = p.spouse;
-  s.push({id:'s_has', sec:2, title:'配偶者', html:()=>`<p>配偶者（夫・妻）はいますか？<span class="note">今年12月31日時点</span></p>${big('has_spouse',[['no','いない'],['yes','いる']], a.has_spouse ?? (psp?'yes':undefined))}${psp?`<div class="prev"><b>前年の登録</b><br>${esc(psp.sei)} ${esc(psp.mei)}　${wareki(psp.birth)}</div>`:''}`,
+  s.push({id:'s_has', sec:2, title:'配偶者', html:()=>`<p>配偶者（夫・妻）はいますか？<span class="note">今年12月31日時点</span></p>${big('has_spouse',[['no','いない（該当なし）'],['yes','いる']], a.has_spouse)}${psp?`<div class="prev"><b>前年の登録</b><br>${esc(psp.sei)} ${esc(psp.mei)}　${wareki(psp.birth)}<br><span class="note">今年もいる場合は「いる」を押してください。</span></div>`:''}`,
     next: async()=>{ const v=pick('has_spouse'); if(!v) throw new Error('どちらかを選んでください'); const o={has_spouse:v}; if(v==='yes'&&!a.spouse&&psp) o.spouse={name:psp.sei+' '+psp.mei, kana:psp.sei_k+' '+psp.mei_k, birth:psp.birth, living: psp.nonres?'abroad':'together', addr:''}; await save(o); }});
   if (a.has_spouse==='yes') {
     s.push({id:'s_info', sec:2, title:'配偶者の情報', html:()=>`<label>氏名</label><input type="text" id="sp_name" value="${esc(sp.name||'')}" placeholder="山田 花子"><label>フリガナ</label><input type="text" id="sp_kana" value="${esc(sp.kana||'')}" placeholder="ヤマダ ハナコ"><label>生年月日</label>${dateInput('sp_birth',sp.birth)}
       <label>住まい</label><select id="sp_living"><option value="together" ${sp.living==='together'?'selected':''}>同居</option><option value="apart" ${sp.living==='apart'?'selected':''}>別居（国内）</option><option value="abroad" ${sp.living==='abroad'?'selected':''}>国外に住んでいる</option></select>
       <div id="sp_addr_box" style="display:${sp.living&&sp.living!=='together'?'block':'none'}"><label>住所</label><input type="text" id="sp_addr" value="${esc(sp.addr||'')}"><div id="sp_remit_box" style="display:${sp.living==='abroad'?'block':'none'}"><label>今年の送金額（年間）</label><div class="yen"><input type="tel" id="sp_remit" value="${esc(sp.remit||'')}"></div><div class="note">親族関係書類と送金関係書類が必要です。あとで事務所から連絡します。</div></div></div>
       <label>あなたから見て</label><select id="sp_rel"><option ${sp.relation==='妻'?'selected':''}>妻</option><option ${sp.relation==='夫'?'selected':''}>夫</option></select>
-      <label>障害者</label><select id="sp_dis" onchange="document.getElementById('sp_dis_box').style.display=this.value==='none'?'none':'block'"><option value="none">該当しない</option><option value="general" ${sp.disability==='general'?'selected':''}>障害者</option><option value="special" ${sp.disability==='special'?'selected':''}>特別障害者（別居）</option><option value="special_together" ${sp.disability==='special_together'?'selected':''}>特別障害者（同居）</option></select>
+      <label>障害者</label><select id="sp_dis" onchange="document.getElementById('sp_dis_box').style.display=(this.value==='none'||this.value==='')?'none':'block'">${sp.disability?'':'<option value="">選んでください</option>'}<option value="none" ${sp.disability==='none'?'selected':''}>該当しない</option><option value="general" ${sp.disability==='general'?'selected':''}>障害者</option><option value="special" ${sp.disability==='special'?'selected':''}>特別障害者（別居）</option><option value="special_together" ${sp.disability==='special_together'?'selected':''}>特別障害者（同居）</option></select>
       <div id="sp_dis_box" style="display:${sp.disability&&sp.disability!=='none'?'block':'none'}"><label>手帳の種類・等級</label><input type="text" id="sp_dis_text" value="${esc(sp.disability_text||'')}" placeholder="例：身体障害者手帳 3級"><div class="note">あとで手帳の写真を撮る画面があります</div></div>`,
       mount:()=>{ $('#sp_living').addEventListener('change',()=>{ const v=$('#sp_living').value; $('#sp_addr_box').style.display=v!=='together'?'block':'none'; $('#sp_remit_box').style.display=v==='abroad'?'block':'none'; }); },
-      next: async()=>{ const o=Object.assign({}, sp, {name:$('#sp_name').value.trim(), kana:$('#sp_kana').value.trim(), birth:$('#sp_birth').value, living:$('#sp_living').value, addr:$('#sp_addr').value.trim(), remit:$('#sp_remit').value, relation:$('#sp_rel').value, disability:$('#sp_dis').value, disability_text:$('#sp_dis_text').value.trim()}); if(!o.name||!o.birth) throw new Error('氏名と生年月日を入れてください'); await save({spouse:o}); }});
-    s.push({id:'s_income', sec:2, title:'配偶者の今年の収入', html:()=>`<p><b>${esc(sp.name||'配偶者')}</b>さんの今年（1〜12月）の<b>年収</b>を、種類ごとに入れてください。<span class="note">収入がなければ 0</span></p>${incomesHtml('spi', sp.incomes)}
-      <div class="hint">給与だけなら年収136万円以下で配偶者控除、207万円以下で配偶者特別控除の対象です（あなたの年収が1,195万円以下の場合）。判定はこちらで行います。</div>`,
-      next: async()=>{ const o=Object.assign({}, sp, {incomes: readIncomes('spi')}); if(window.judgeCompute) save({spouse:o}); else await saveWait({spouse:o}); const c=R.computed.spouse; if(c) toast(c.kubun==='対象外'?'配偶者控除の対象外です（収入が上限を超えています）': c.kubun==='特別'?'配偶者特別控除の対象です':'配偶者控除の対象です'); }});
+      next: async()=>{ const o=Object.assign({}, sp, {name:$('#sp_name').value.trim(), kana:$('#sp_kana').value.trim(), birth:$('#sp_birth').value, living:$('#sp_living').value, addr:$('#sp_addr').value.trim(), remit:$('#sp_remit').value, relation:$('#sp_rel').value, disability:$('#sp_dis').value, disability_text:$('#sp_dis_text').value.trim()}); if(!o.name||!o.birth) throw new Error('氏名と生年月日を入れてください'); if(!o.disability) throw new Error('「障害者」の欄を選んでください（当てはまらなければ「該当しない」）'); await save({spouse:o}); }});
+    s.push({id:'s_income', sec:2, title:'配偶者の今年の収入', html:()=>{ const has=(sp.incomes||[]).length ? ((sp.incomes||[]).some(x=>x.amount>0)?'yes':'no') : undefined; return `<p><b>${esc(sp.name||'配偶者')}</b>さんに、今年（1〜12月）の収入はありますか？</p>${big('sp_inc',[['no','収入はない（0円）'],['yes','収入がある']], has)}
+      <div id="spibox" style="display:${has==='yes'?'block':'none'}"><p>年収を、種類ごとに入れてください。</p>${incomesHtml('spi', sp.incomes)}</div>
+      <div class="hint">給与だけなら年収136万円以下で配偶者控除、207万円以下で配偶者特別控除の対象です（あなたの年収が1,195万円以下の場合）。判定はこちらで行います。</div>`; },
+      mount:()=>{ document.querySelectorAll('[data-k=sp_inc]').forEach(b=>b.addEventListener('click',()=>{$('#spibox').style.display=b.dataset.v==='yes'?'block':'none'; fmtYenInputs(); })); },
+      next: async()=>{ const hv=pick('sp_inc'); if(!hv) throw new Error('「収入はない」か「収入がある」を押してください'); const inc= hv==='no' ? [{type:'salary',amount:0}] : readIncomes('spi'); if(hv==='yes' && !inc.some(x=>x.amount>0)) throw new Error('金額を入れてください（収入が無ければ「収入はない」を押してください）'); const o=Object.assign({}, sp, {incomes: inc}); if(window.judgeCompute) save({spouse:o}); else await saveWait({spouse:o}); const c=R.computed.spouse; if(c) toast(c.kubun==='対象外'?'配偶者控除の対象外です（収入が上限を超えています）': c.kubun==='特別'?'配偶者特別控除の対象です':'配偶者控除の対象です'); }});
   }
 
   // 3 家族
   const fam = R.family || [];
   const prevFam = (p.family||[]);
-  s.push({id:'f_list', sec:3, title:'扶養する家族（配偶者以外）', html:()=>famList(), mount:()=>bindFam(), next: async()=>{ const miss=(R.family||[]).filter(f=>!(f.incomes&&f.incomes.length)); if(miss.length) throw new Error(miss.map(f=>f.name).join('、')+' の「編集」を開いて、今年の収入を入れてください（0円でも保存）'); await save({f_done:true}); }});
+  s.push({id:'f_list', sec:3, title:'扶養する家族（配偶者以外）', html:()=>famList(), mount:()=>bindFam(), next: async()=>{ const none=!(R.family||[]).length; if(none && pick('f_none')!=='yes') throw new Error('「扶養する家族はいない（該当なし）」を押すか、家族を追加してください'); const miss=(R.family||[]).filter(f=>!(f.incomes&&f.incomes.length)); if(miss.length) throw new Error(miss.map(f=>f.name).join('、')+' の「編集」を開いて、今年の収入を入れてください（0円でも保存）'); await save({f_done:true, f_none: none?'yes':''}); }});
 
   // 家族・配偶者の障害者手帳
   const disPeople = [...(a.has_spouse==='yes'&&(a.spouse||{}).disability&&a.spouse.disability!=='none'? [a.spouse.name]:[]), ...fam.filter(f=>f.disability&&f.disability!=='none').map(f=>f.name)];
@@ -250,6 +261,7 @@ function shRow(r){ return `<div class="row shr" style="margin-top:6px"><select n
 
 function big(key, opts, cur){ return `<div class="big">${opts.map(([v,l])=>`<button type="button" data-k="${key}" data-v="${v}" class="${cur===v?'sel':''}">${l}</button>`).join('')}</div>`; }
 function pick(key){ const b=document.querySelector(`[data-k=${key}].sel`); return b? b.dataset.v: null; }
+function salaryPrefill(){ const p=R.prev||{}; return Number((R.prev_answers&&R.prev_answers.salary) || p.salary_total || 0); } // 給与の欄に前年から入れてある金額（無ければ0）
 function prevHeadIsSelf(){ const p=R.prev||{}; if(!p.head||!p.head.sei) return undefined; if(p.head.rel==='本人') return 'yes'; if(p.head.sei===p.sei && p.head.mei===p.mei) return 'yes'; return 'no'; }
 function selfForm(){ const a=A(), p=R.prev||{}; return `<label>氏名</label><input type="text" id="s_name" value="${esc(a.name ?? (p.sei? p.sei+' '+p.mei:''))}" placeholder="山田 太郎"><label>フリガナ</label><input type="text" id="s_kana" value="${esc(a.kana ?? (p.sei_k? p.sei_k+' '+p.mei_k:''))}" placeholder="ヤマダ タロウ"><label>性別</label><select id="s_sex"><option value="">選んでください</option><option ${(a.sex ?? p.sex)==='男'?'selected':''}>男</option><option ${(a.sex ?? p.sex)==='女'?'selected':''}>女</option></select><label>生年月日</label>${dateInput('s_birth', a.birth ?? p.birth)}<label>郵便番号</label><input type="tel" id="s_zip" value="${esc(a.zip ?? p.zip ?? '')}" placeholder="590-0000"><label>住所（来年1月1日に住んでいる所）</label><input type="text" id="s_addr" value="${esc(a.addr ?? p.addr ?? '')}" placeholder="大阪府○○市○○町1-2-3 ○○マンション101"><div class="note">姓と名の間は空白を入れてください。</div>`; }
 function readSelf(){ const o={name:$('#s_name').value.trim(), kana:$('#s_kana').value.trim(), sex:$('#s_sex').value, birth:$('#s_birth').value, zip:$('#s_zip').value.trim(), addr:$('#s_addr').value.trim()}; if(!o.name||!o.kana||!o.sex||!o.birth||!o.addr) throw new Error('氏名・フリガナ・性別・生年月日・住所を入れてください'); return o; }
@@ -273,7 +285,7 @@ function famList(){
     const chTag = ch.kind==='in' ? `<span class="tag">扶養に入った ${esc(ch.ym||'')}</span>` : ch.kind==='death' ? `<span class="tag">${esc(ch.ym||'')} まで</span>` : '';
     return `<div class="it"><div><b>${esc(f.name)}</b> <span class="note">${esc(f.relation)}・${wareki(f.birth)}</span>${need?'<span class="tag r">今年の収入が未入力</span>':`<span class="tag ${c.class==='対象外'?'r':''}">${cls(c.class)}</span>`}${chTag}<small>${minor? '16歳未満（収入 0円）' : (f.incomes||[]).length? ((f.incomes||[]).filter(x=>x.amount>0).map(x=>incTypes[x.type].split('（')[0]+' '+yen(x.amount)).join('、')||'収入 0円') : (f.prev_kubun? '前年：'+f.prev_kubun : '')}${c.note?'<br><span style="color:var(--red)">'+esc(c.note)+'</span>':''}</small></div>${need?`<button type="button" class="b1" style="flex:0 0 auto;padding:8px 10px;font-size:14px" data-zero="${i}">0円</button> `:''}<button type="button" class="b3" data-edit="${i}">${need?'入力':'編集'}</button></div>`; }).join('')}</div>
   ${fam.length<10? `<button type="button" class="b2" id="f_add" style="width:100%">＋ 家族を追加する${fam.length>=5?'（6人目以降）':''}</button>`:''}
-  ${fam.length? '<p class="note">今年、扶養に入った方・扶養から出た方は「編集」で日付を入れてください。</p>': '<p class="note">扶養する家族がいなければ、そのまま「次へ」</p>'}`;
+  ${fam.length? '<p class="note">今年、扶養に入った方・扶養から出た方は「編集」で日付を入れてください。</p>': `<p style="margin-top:14px">扶養する家族（配偶者以外）がいない方は、下を押してください。</p>${big('f_none',[['yes','扶養する家族はいない（該当なし）']], A().f_none==='yes'?'yes':undefined)}`}`;
 }
 function bindFam(){
   if (!(R.family||[]).length && (R.prev&&R.prev.family||[]).length && !A().f_imported) { api('save',{family:famFromPrev(), answers:{f_imported:true}}).then(()=>render()); return; }
@@ -282,7 +294,7 @@ function bindFam(){
   const add=$('#f_add'); if(add) add.onclick=()=>famEdit(-1);
 }
 function famEdit(i){
-  const f = i>=0 ? R.family[i] : {name:'',kana:'',relation:'子',birth:'',living:'together',addr:'',supporter:'self',disability:'none',incomes:[], change:{kind:'in', ym:'', day:'', reason:''}};
+  const f = i>=0 ? R.family[i] : {name:'',kana:'',relation:'子',birth:'',living:'together',addr:'',supporter:'self',disability:'',incomes:[], change:null}; // 新しく足す人：障害者・扶養の変わり目は、本人に選んでもらう（初めから選んだ状態にしない）
   $('#nav').style.display='none';
   view.innerHTML = `<div class="card"><div class="sec">家族</div><h1>${i>=0?'家族の情報を編集':'家族を追加'}</h1>
     <label>氏名</label><input type="text" id="fn" value="${esc(f.name)}" placeholder="山田 一郎"><label>フリガナ</label><input type="text" id="fk" value="${esc(f.kana)}" placeholder="ヤマダ イチロウ"><label>続柄</label><select id="fr">${relOpts.map(r=>`<option ${f.relation===r?'selected':''}>${r}</option>`).join('')}</select><label>生年月日</label>${dateInput('fb',f.birth)}
@@ -294,9 +306,9 @@ function famEdit(i){
     <div id="fi_wrap" style="display:${(f.incomes||[]).some(x=>x.amount>0)?'block':'none'}">${incomesHtml('fi', f.incomes)}</div>
     <label>誰の扶養に入れますか</label><select id="fs"><option value="self" ${f.supporter==='self'?'selected':''}>あなた（本人）</option><option value="other" ${f.supporter==='other'?'selected':''}>配偶者や祖父母など、別の方</option></select>
     <div id="fo_box" style="display:${f.supporter==='other'?'block':'none'}"><label>その方の氏名</label><input type="text" id="fon" value="${esc(f.supporter_name||'')}"><label>あなたから見た続柄</label>${relSelect('fer', f.supporter_rel||'妻', headRelOpts.filter(x=>x!=='本人'))}<div class="note">共働きで配偶者の扶養にする場合など。</div></div>
-    <label>障害者</label><select id="fd" onchange="document.getElementById('fd_box').style.display=this.value==='none'?'none':'block'"><option value="none">該当しない</option><option value="general" ${f.disability==='general'?'selected':''}>障害者</option><option value="special" ${f.disability==='special'?'selected':''}>特別障害者（別居）</option><option value="special_together" ${f.disability==='special_together'?'selected':''}>特別障害者（同居）</option></select>
+    <label>障害者</label><select id="fd" onchange="document.getElementById('fd_box').style.display=(this.value==='none'||this.value==='')?'none':'block'">${f.disability?'':'<option value="">選んでください</option>'}<option value="none" ${f.disability==='none'?'selected':''}>該当しない</option><option value="general" ${f.disability==='general'?'selected':''}>障害者</option><option value="special" ${f.disability==='special'?'selected':''}>特別障害者（別居）</option><option value="special_together" ${f.disability==='special_together'?'selected':''}>特別障害者（同居）</option></select>
     <div id="fd_box" style="display:${f.disability&&f.disability!=='none'?'block':'none'}"><label>手帳の種類・等級</label><input type="text" id="fd_text" value="${esc(f.disability_text||'')}" placeholder="例：療育手帳 A"></div>
-    <label>今年の扶養の変わり目（あれば）</label><select id="fch"><option value="">変わりなし（1年を通して扶養）</option><option value="in" ${f.change?.kind==='in'?'selected':''}>今年、扶養に入った</option><option value="out" ${f.change?.kind==='out'?'selected':''}>今年、扶養から出た</option><option value="death" ${f.change?.kind==='death'?'selected':''}>今年、亡くなられた</option></select>
+    <label>今年の扶養の変わり目</label><select id="fch">${i<0?'<option value="pick">選んでください</option>':''}<option value="">変わりなし（1年を通して扶養）</option><option value="in" ${f.change?.kind==='in'?'selected':''}>今年、扶養に入った</option><option value="out" ${f.change?.kind==='out'?'selected':''}>今年、扶養から出た</option><option value="death" ${f.change?.kind==='death'?'selected':''}>今年、亡くなられた</option></select>
     <div id="fch_box" style="display:${f.change?.kind?'block':'none'}"><label>その年月（日は分かれば）</label>${dateInput('fch_date', (f.change?.ym? f.change.ym+'-'+String(f.change.day||1).padStart(2,'0'):''), {noAge:true, dayOptional:true, minYear:YEAR-1, maxYear:YEAR}).replace('class="row dsel"','class="row dsel" data-noage="1" data-dayopt="1"')}
     <div id="fch_in" style="display:${f.change?.kind==='in'?'block':'none'}"><label>きっかけ（任意）</label><select id="fch_rin"><option value="">選ばない</option>${Object.entries(inReasons).map(([k,v])=>`<option value="${k}" ${f.change?.reason===k?'selected':''}>${v}</option>`).join('')}</select></div>
     <div id="fch_out" style="display:${f.change?.kind==='out'?'block':'none'}"><label>きっかけ（任意）</label><select id="fch_rout"><option value="">選ばない</option>${Object.entries(outReasons).map(([k,v])=>`<option value="${k}" ${f.change?.reason===k?'selected':''}>${v}</option>`).join('')}</select><div class="note">扶養から出た方は、今年の扶養控除の対象になりません。</div></div>
@@ -308,18 +320,20 @@ function famEdit(i){
   $('#fs').onchange=()=>{ $('#fo_box').style.display=$('#fs').value==='other'?'block':'none'; };
   $('#fz0').onclick=()=>{ $('#fz0').classList.add('sel'); $('#fz1').classList.remove('sel'); $('#fi_wrap').style.display='none'; };
   $('#fz1').onclick=()=>{ $('#fz1').classList.add('sel'); $('#fz0').classList.remove('sel'); $('#fi_wrap').style.display='block'; fmtYenInputs(); };
-  $('#fch').onchange=()=>{ const v=$('#fch').value; $('#fch_box').style.display=v?'block':'none'; $('#fch_in').style.display=v==='in'?'block':'none'; $('#fch_out').style.display=v==='out'?'block':'none'; $('#fch_death').style.display=v==='death'?'block':'none'; };
+  $('#fch').onchange=()=>{ const v=$('#fch').value==='pick'?'':$('#fch').value; $('#fch_box').style.display=v?'block':'none'; $('#fch_in').style.display=v==='in'?'block':'none'; $('#fch_out').style.display=v==='out'?'block':'none'; $('#fch_death').style.display=v==='death'?'block':'none'; };
   $('#fl').addEventListener('change',()=>{ $('#fr_box').style.display=$('#fl').value==='apart'?'block':'none'; });
   $('#fcancel').onclick=()=>render();
   if ($('#fdel')) $('#fdel').onclick=async()=>{ if(!confirm('この家族を削除しますか？')) return; const fam=[...R.family]; fam.splice(i,1); const ex={family:fam, change:'家族を削除: '+f.name}; if(window.judgeCompute) save({}, ex); else await saveWait({}, ex); render(); };
-  $('#fsave').onclick=async()=>{ try{ const n={prev_income:f.prev_income, prev_kubun:f.prev_kubun, name:$('#fn').value.trim(), kana:$('#fk').value.trim(), relation:$('#fr').value, birth:$('#fb').value, living:$('#fl').value, addr:$('#fa').value.trim(), remit:$('#fm').value, supporter:$('#fs').value, supporter_name:$('#fon').value.trim(), supporter_rel:relValue('fer'), disability:$('#fd').value, disability_text:$('#fd_text').value.trim(), incomes: $('#fz0').classList.contains('sel')? [{type:'salary',amount:0}] : readIncomes('fi')}; if(!n.name||!n.birth) throw new Error('氏名と生年月日を入れてください'); if(!$('#fz0').classList.contains('sel')&&!$('#fz1').classList.contains('sel')&&!(age(n.birth)<16)) throw new Error('「年収は0円」か「年収を入力する」を選んでください'); if(age(n.birth)<16&&!n.incomes.length) n.incomes=[{type:'salary',amount:0}];
-    { const k=$('#fch').value; if(k){ const v=$('#fch_date').value; if(!v) throw new Error('年と月を選んでください'); n.change={kind:k, reason: k==='in'?$('#fch_rin').value: k==='out'?$('#fch_rout').value:'', ym:v.slice(0,7), day:$('#fch_date').dataset.day||''}; } else n.change=null; }
+  $('#fsave').onclick=async()=>{ try{ const n={prev_income:f.prev_income, prev_kubun:f.prev_kubun, name:$('#fn').value.trim(), kana:$('#fk').value.trim(), relation:$('#fr').value, birth:$('#fb').value, living:$('#fl').value, addr:$('#fa').value.trim(), remit:$('#fm').value, supporter:$('#fs').value, supporter_name:$('#fon').value.trim(), supporter_rel:relValue('fer'), disability:$('#fd').value, disability_text:$('#fd_text').value.trim(), incomes: $('#fz0').classList.contains('sel')? [{type:'salary',amount:0}] : readIncomes('fi')}; if(!n.name||!n.birth) throw new Error('氏名と生年月日を入れてください'); if(!n.disability) throw new Error('「障害者」の欄を選んでください（当てはまらなければ「該当しない」）'); if(!$('#fz0').classList.contains('sel')&&!$('#fz1').classList.contains('sel')&&!(age(n.birth)<16)) throw new Error('「年収は0円」か「年収を入力する」を選んでください'); if(age(n.birth)<16&&!n.incomes.length) n.incomes=[{type:'salary',amount:0}];
+    { const k=$('#fch').value; if(k==='pick') throw new Error('「今年の扶養の変わり目」を選んでください（1年を通して扶養なら「変わりなし」）'); if(k){ const v=$('#fch_date').value; if(!v) throw new Error('年と月を選んでください'); n.change={kind:k, reason: k==='in'?$('#fch_rin').value: k==='out'?$('#fch_rout').value:'', ym:v.slice(0,7), day:$('#fch_date').dataset.day||''}; } else n.change=null; }
     n.remit_domestic = $('#fl').value==='apart' ? ($('#frd').value) : ''; n.remit_domestic_amount = $('#frda') ? $('#frda').value : ''; const fam=[...R.family]; if(i>=0) fam[i]=n; else fam.push(n); const ex={family:fam, change:(i>=0?'家族を編集: ':'家族を追加: ')+n.name}; if(window.judgeCompute) save({}, ex); else await saveWait({}, ex); render(); }catch(e){ $('#ferr').textContent=e.message; } };
 }
 
 // ---------- 写真・証明書 ----------
 function photoStep(id, sec, title, text, kind, sub){
-  return {id, sec, title, html:()=>{ const mine=(R.certs||[]).filter(c=>c.kind===kind&&c.status!=='deleted'&&(!sub||c.sub===sub)); return `<p>${text}</p>${camHtml(kind)}<div class="list" style="margin-top:10px">${mine.map(c=>`<div class="it"><div>撮影済み <small>${new Date(c.at).toLocaleString('ja-JP')}${c.ai&&c.ai.techo?`<br>読み取り：${esc(c.ai.techo.holder||'')}　${esc(c.ai.techo.type||'')} ${esc(c.ai.techo.grade||'')}`:''}</small></div><button type="button" class="b3" data-del="${c.id}">削除</button></div>`).join('')}</div>`; }, mount:()=>bindCam(kind, sub), next: async()=>{ /* 任意 */ }};
+  const mineOf=()=>(R.certs||[]).filter(c=>c.kind===kind&&c.status!=='deleted'&&(!sub||c.sub===sub)), nk='np_'+id;
+  return {id, sec, title, html:()=>{ const mine=mineOf(); return `<p>${text}</p>${camHtml(kind)}<div class="list" style="margin-top:10px">${mine.map(c=>`<div class="it"><div>撮影済み <small>${new Date(c.at).toLocaleString('ja-JP')}${c.ai&&c.ai.techo?`<br>読み取り：${esc(c.ai.techo.holder||'')}　${esc(c.ai.techo.type||'')} ${esc(c.ai.techo.grade||'')}`:''}</small></div><button type="button" class="b3" data-del="${c.id}">削除</button></div>`).join('')}</div>${mine.length?'':`<p style="margin-top:14px">いま撮れない方は、下を押してください。</p>${big(nk,[['later','いまは手元にない（あとで会社に出す）']], A()[nk]==='later'?'later':undefined)}`}`; }, mount:()=>bindCam(kind, sub),
+    next: async()=>{ const has=mineOf().length>0; if(!has && pick(nk)!=='later') throw new Error('写真を撮るか、「いまは手元にない」を押してください'); const o={}; o[nk]= has?'':'later'; await save(o); }};
 }
 function certStep(id, title, question, cat, extra){
   const key='has_'+cat;
@@ -390,7 +404,7 @@ function compareHtml(){
 async function render(){
   steps = buildSteps();
   if (idx >= steps.length) idx = steps.length-1;
-  if (steps[idx].id==='r_cmp' && !R._fresh) { view.innerHTML='<div class="card"><p>入力内容を確認しています…</p></div>'; await flush(); R._fresh=true; steps=buildSteps(); }
+  if (steps[idx].id==='r_cmp' && !R._fresh) { view.innerHTML='<div class="card"><div class="spin">入力内容を確認しています…</div></div>'; await flush(); R._fresh=true; steps=buildSteps(); }
   const st = steps[idx];
   const secs=['はじめに','ご本人','配偶者','家族','証明書','確認'];
   $('#prog').innerHTML = secs.map((n,i)=>`<span class="${i<st.sec?'done':i===st.sec?'on':''}" title="${n}"></span>`).join('');
@@ -434,7 +448,7 @@ function loginView(msg){
     <div class="err" id="lerr">${esc(msg||'')}</div><div class="btns"><button class="b1" id="login">始める</button></div><p class="note" style="margin-top:14px">番号が分からないときは、お勤め先にお尋ねください。</p></div>`;
   bindAllDates(); const pf=$('#pin'), cf=$('#code'); try{ (kc?pf:cf).focus(); }catch(e){}
   const go = async()=>{ const lb=$('#login'); if(lb.disabled) return; if(!cf.value.trim()){ $('#lerr').textContent='登録コードを入れてください'; return; } if(pf.value.replace(/\D/g,'').length!==6){ $('#lerr').textContent='暗証番号は数字6桁です'; return; }
-    lb.disabled=true; lb.textContent='確認しています…'; try{ const j=await api('login',{code:cf.value, pin:pf.value}); try{ localStorage.setItem(CODEKEY, cf.value.replace(/\D/g,'')); }catch(e){} LINK=null; start(); if(j.after) api('login_after').catch(()=>{}); }
+    lb.disabled=true; lb.innerHTML='<span class="ring"></span>確認しています…'; try{ const j=await api('login',{code:cf.value, pin:pf.value}); try{ localStorage.setItem(CODEKEY, cf.value.replace(/\D/g,'')); }catch(e){} LINK=null; start(); if(j.after) api('login_after').catch(()=>{}); }
     catch(e){ $('#lerr').textContent=e.message; pf.value=''; const l2=$('#login'); if(l2){ l2.disabled=false; l2.textContent='始める'; } try{ pf.focus(); }catch(_){} } };
   $('#login').onclick = go; pf.addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
 }
