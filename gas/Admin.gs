@@ -83,7 +83,7 @@ function adminApi(a, p) {
     case 'client_name': { var nm = clientsLoad(); nm[four(p.client)] = String(p.name || '').trim(); jsonSave(rootFolder(), '_clients.json', nm); return { ok: true, msg: '保存しました' }; }
     case 'add_emp': {
       var cl4 = four(p.client), e4 = String(p.emp || '').trim(); if (cl4.length !== 4 || !e4) throw new Error('顧問先コード4桁と個人コードを入れてください');
-      var ed4 = pathFolder([cl4, String(c.year), safeEmp(e4)], true); var ro4 = jsonLoad(ed4, 'roster.json', {});
+      var ed4 = empDir(cl4, e4, true); var ro4 = jsonLoad(ed4, 'roster.json', {});
       if (!ro4.pin) { ro4.pin = randomDigits(6); ro4.pin_used = false; ro4.pin_issued_at = nowIso(); ro4.status = ro4.status || 'active'; jsonSave(ed4, 'roster.json', ro4); }
       summaryUpdate(cl4, e4); indexAdd(cl4, c.year);
       return { ok: true, msg: '登録コード ' + cl4 + codeDigits(e4) + ' を作りました（暗証番号 ' + ro4.pin + '）' };
@@ -141,26 +141,24 @@ function adminApi(a, p) {
     }
     case 'client_clear': { // この顧問先の今年の名簿を空にする（取り込みをやり直すとき）。提出済みの人がいれば止める
       var clc = four(p.client); if (clc.length !== 4 || String(p.confirm || '') !== clc) throw new Error('確認の顧問先コードが違います');
-      var rootc = rootFolder(), dirs = [], d1 = pathFolder([clc, String(c.year)], false); if (d1) dirs.push(d1);
-      cacheDel('fid:' + rootc.getId() + '/' + clc); var cdc = subFolder(rootc, clc, false); // 一時保存を捨てて、ドライブの実物を見直す（手作業でごみ箱に入れた跡が残っていても拾う）
-      if (cdc) { cacheDel('fid:' + cdc.getId() + '/' + c.year); var d2 = subFolder(cdc, String(c.year), false); if (d2 && (!d1 || d2.getId() !== d1.getId())) dirs.push(d2); }
-      dirs = dirs.filter(function (dir) { try { return !dir.isTrashed(); } catch (e) { return false; } }); // すでにごみ箱にある年フォルダは触らない
-      var targets = [];
-      dirs.forEach(function (dir) { var itc = dir.getFolders(); while (itc.hasNext()) { var fc = itc.next(), nmc = fc.getName(); if (nmc.charAt(0) === '_') continue;
-        var rc = jsonLoad(fc, 'answers.json'); if (rc && rc.status === 'submitted') throw new Error('提出済みの方がいるため、空にできません（' + nmc + '）');
-        targets.push({ dir: dir, f: fc, name: nmc }); } });
-      targets.forEach(function (t) { deviceUnbindAll(clc, t.name); t.f.setTrashed(true); cacheDel('fid:' + t.dir.getId() + '/' + t.name); });
-      dirs.forEach(function (dir) { fileDelete(dir, '_ics_meta.json'); jsonSave(dir, '_summary.json', {}); });
+      var sc = summaryLoad(clc), nc = 0; for (var kc in sc) { nc++; if (sc[kc].status === 'submitted') throw new Error('提出済みの方がいるため、空にできません（' + (sc[kc].name || kc) + '）'); }
+      // 1人ずつ消さず、年のフォルダごと名前を変えてごみ箱へ入れ、新しい年のフォルダを作る（人数に関係なく数秒）
+      var rootc = rootFolder(), ys = String(c.year), old = pathFolder([clc, ys], false), keepMsg = null, stamp = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMdd-HHmmss');
+      try { if (old) keepMsg = jsonLoad(old, '_company_msg.json', null); } catch (e) {} // 会社が直した案内文は引き継ぐ
+      cacheDel('fid:' + rootc.getId() + '/' + clc); var cdc = subFolder(rootc, clc, true); cacheDel('fid:' + cdc.getId() + '/' + ys); // 一時保存を捨てて、ドライブの実物を見る
+      var ity = cdc.getFoldersByName(ys); while (ity.hasNext()) { var fy = ity.next(); if (!fy.isTrashed()) { fy.setName(ys + '_消去_' + stamp); fy.setTrashed(true); } }
+      try { if (old && !old.isTrashed()) { old.setName(ys + '_消去_' + stamp); old.setTrashed(true); } } catch (e) {}
+      var nd = subFolder(cdc, ys, true); jsonSave(nd, '_summary.json', {}); if (keepMsg) jsonSave(nd, '_company_msg.json', keepMsg);
       withLock(function () { homeUpdate(clc, c.year, {}); }); indexAdd(clc, c.year);
-      audit('client cleared ' + clc + ' ' + c.year + ' (' + targets.length + ')');
-      return { ok: true, msg: clc + ' の ' + c.year + ' 年分の名簿を空にしました（' + targets.length + ' 人分をごみ箱へ）。会社用ページのURLはそのまま使えます' };
+      audit('client cleared ' + clc + ' ' + c.year + ' (' + nc + ')');
+      return { ok: true, msg: clc + ' の ' + c.year + ' 年分の名簿を空にしました（' + nc + ' 人分をごみ箱へ）。会社用ページのURLはそのまま使えます' };
     }
     case 'assign_code': {
       var cl9 = four(p.client), old = String(p.old || ''), nw = String(p.new || '').trim();
       var od = empDir(cl9, old, false); if (!od) throw new Error('元のフォルダがありません');
       if (!nw) throw new Error('個人コードを入れてください');
       if (empDir(cl9, nw, false)) throw new Error('その個人コードは既にあります');
-      od.setName(safeEmp(nw)); cacheDel('fid:' + od.getParents().next().getId() + '/' + safeEmp(old));
+      od.setName(safeEmp(nw)); pendingDrop(cl9, old); cacheDel('fid:' + od.getParents().next().getId() + '/' + safeEmp(old));
       var r9 = jsonLoad(od, 'answers.json'); if (r9) { r9.emp = nw; jsonSave(od, 'answers.json', r9); }
       summaryUpdate(cl9, old); summaryUpdate(cl9, nw);
       return { ok: true, msg: old + ' → ' + nw + ' に割り当てました。登録コード：' + cl9 + codeDigits(nw) };

@@ -4,7 +4,7 @@ const ctx = makeContext({ props: { YEAR: '2026' } }); const run = c => vm.runInC
 run('rootFolder(); rosterBulk("9999", "社員番号,氏名\\n1,見本 一郎\\n2,見本 二郎", "office-csv");'); ctx.__pin = run('summaryLoad("9999")["**000001"].pin');
 const ops = (label, code) => { ctx.__ops.read = 0; ctx.__ops.write = 0; const r = run(code); console.log('  ' + label.padEnd(30), '読み', ctx.__ops.read, '書き', ctx.__ops.write); return { r, read: ctx.__ops.read, write: ctx.__ops.write }; };
 let o = ops('ログイン（画面を出すまで）', 'var J = empApi("login", {code:"9999000001", pin:__pin}); J.ok');
-assert.strictEqual(o.write, 0, 'ログインで書き込みをしない'); assert.ok(o.read <= 6, '読みは6回まで'); assert.ok(run('J.after === true && J.dev === undefined'), '合鍵（自動ログイン）は発行しない');
+assert.strictEqual(o.write, 0, 'ログインで書き込みをしない'); assert.ok(o.read <= 7, '読みは7回まで'); assert.ok(run('J.after === true && J.dev === undefined'), '合鍵（自動ログイン）は発行しない');
 assert.strictEqual(run('summaryLoad("9999")["**000001"].pin_used'), false); // まだ書いていない
 o = ops('後片づけ（裏で1回）', 'empApi("login_after", {_t: J._t}).ok');
 assert.ok(run('var s = summaryLoad("9999")["**000001"]; s.pin_used === true && s.pin_used_count === 1 && s.device === true'));

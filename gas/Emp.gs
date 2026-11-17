@@ -49,7 +49,7 @@ function empApi(a, p) {
       if (!clientDir(pc.client)) { throttleFail(tkc, 30); throw new Error('この登録コードの会社は、まだ登録されていません。事務所にご確認ください'); }
       var emp = resolveEmp(pc.client, pc.num);
       if (!emp) { throttleFail(tk, 5); throttleFail(tkc, 30); throw new Error('この登録コードは見つかりません。数字をもう一度ご確認ください'); }
-      var ed = empDir(pc.client, emp, true); var ro2 = jsonLoad(ed, 'roster.json', {});
+      var st2 = empState(pc.client, emp), ro2 = st2.ed ? jsonLoad(st2.ed, 'roster.json', {}) : ((st2.pe && st2.pe.ro) || {}); // フォルダは作らない（まとめ置きのままでも読める）
       if ((ro2.status || 'active') === 'retired') throw new Error('退職された方は、この会社の年末調整の対象外です。源泉徴収票をもとにご自身で確定申告をしてください');
       var pin = zenToHanDigits(p.pin || '').replace(/\D/g, '');
       if (!pin) return { ok: true, need_pin: true };
@@ -60,7 +60,7 @@ function empApi(a, p) {
       // 暗証番号が合った。画面を早く出すため、ここではドライブに書かない（書き込みは1回1秒ほどかかる）。
       // 記録（暗証番号を使った印・スマホの合鍵・一覧の集計）は、画面が出たあと login_after でまとめて書く
       throttleClear(tk); audit('login ok ' + pc.client + '-' + emp);
-      var r3 = loadRecord(pc.client, emp);
+      var r3 = loadRecord(pc.client, emp, st2);
       var t3 = sessionNew('emp', { client: pc.client, emp: emp });
       cachePut('loginafter:' + t3, '1', 3600);
       return { ok: true, _t: t3, after: true, record: packRecord(r3) }; // スマホの合鍵（自動ログイン）は発行しない

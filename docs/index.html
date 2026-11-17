@@ -279,7 +279,7 @@ function readIncomes(prefix){ const t=[...document.querySelectorAll(`[name=${pre
 // ---------- 画面の定義 ----------
 function buildSteps(){
   const a = A(), p = R.prev || {}, s = [];
-  const hasPrev = !!(p && p.sei);
+  const hasPrev = !!(p && p.sei && p.addr && p.birth); // 前年CSVに氏名しか無い人（住所・生年月日が空）は、新しい人と同じ入力画面にする。「変わりない」で空のまま進めないように
   // 0 入口
   if (!R.consent_at) s.push({id:'consent', sec:0, title:'はじめに', html:()=>`
     <p>このアプリは、<b>${esc(R.config.app_name)}</b>が年末調整の書類を作るために使います。</p>

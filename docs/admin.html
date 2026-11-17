@@ -145,13 +145,13 @@ function renderClient(j){
 }
 function saveText(text, filename){ const url=URL.createObjectURL(new Blob(['\uFEFF'+text],{type:'text/csv'})); const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000); }
 async function rosterExport(cl){ await run(async()=>{ const j=await api('roster_export',{client:cl}); saveText(j.csv, j.filename); return {msg:'名簿をCSVで保存しました：'+j.filename}; }).catch(()=>{}); }
-// 名簿の読み込み：種類を選ぶ。会社用の形は画面側で文字コードを直し、10人ずつ送る（長い処理で止まらないように）
+// 名簿の読み込み：種類を選ぶ。会社用の形は画面側で文字コードを直し、50人ずつ送る（長い処理で止まらないように）
 async function rosterImport(cl){ const f=$('#ri_file').files[0], kind=$('#ri_kind').value; if(!f){ msg('CSVを選んでください'); return; } Object.keys(memo).forEach(k=>delete memo[k]);
   try{
     if(kind==='ics'){ busy('取り込み中…（日本ICSの形）'); const j=await api('import_csv',{client:cl, files:[{name:f.name, b64:await toB64(f)}]}); busy(false); msg(j.msg); }
     else { const buf=await f.arrayBuffer(); let text; try{ text=new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch(e){ text=new TextDecoder('shift_jis').decode(buf); }
       const lines=text.replace(/^\uFEFF/,'').split(/\r\n|\n|\r/).filter(l=>l.trim()!==''); if(lines.length<2){ msg('データの行がありません'); return; }
-      const head=lines[0], body=lines.slice(1), N=10; let upd=0, add=0, skip=0, warn=[];
+      const head=lines[0], body=lines.slice(1), N=50; let upd=0, add=0, skip=0, warn=[];
       for(let i=0;i<body.length;i+=N){ busy('読み込み中… '+Math.min(i+N,body.length)+' / '+body.length+' 人'); const j=await api('roster_import',{client:cl, text:[head].concat(body.slice(i,i+N)).join('\n')}); upd+=j.upd||0; add+=j.add||0; skip+=j.skip||0; warn=warn.concat(j.warn||[]); }
       busy(false); msg('読み込みが終わりました：更新 '+upd+' 人、追加 '+add+' 人、読み飛ばし '+skip+' 行'+(warn.length?'　読み飛ばした方：'+warn.join('、'):'')); }
   }catch(e){ busy(false); msg('止まりました：'+e.message); }

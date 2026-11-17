@@ -77,6 +77,7 @@ function rosterBulk(client, text, by) {
   var reg = function (k, nm, bd) { var n0 = strip(nm); if (bd) existing[n0 + '|' + bd] = k; (byName[n0] = byName[n0] || []).push(k); var d = codeDigits(k); if (d !== '') byNum[parseInt(d, 10)] = k; used[k] = 1; };
   for (var k in s) reg(k, s[k].name, s[k].birth);
   var yd = pathFolder([client, String(year)], true), changed = {};
+  var have = null, pend = pendingLoad(client, year), pdirty = false; // 新しい人は、全員分を _pending.json 1枚に置く（フォルダは本人が初めて入ったときに作る）
   var nx = nextEmpCode(client), nm0 = /^(\D*)(\d+)$/.exec(nx), npre = nm0[1], nw = nm0[2].length, nseq = parseInt(nm0[2], 10); // 個人コードは今ある最大の番号の続き
   var upd = 0, add = 0, skip = 0, warn = [];
   lines.slice(1).forEach(function (c) {
@@ -98,21 +99,24 @@ function rosterBulk(client, text, by) {
       var e3 = hit; var row = changed[e3] || s[e3];
       var kana2 = String(c[iKana !== null ? iKana : -1] || '').trim();
       if (!hire2 && !ret && !kana2) { upd++; return; } // 変えるものが無ければ書かない
-      var ed3 = pathFolder([client, String(year), safeEmp(e3)], true); var ro3 = jsonLoad(ed3, 'roster.json', {});
+      if (!have) { have = {}; listFolderNames(yd).forEach(function (n) { have[n] = 1; }); } // フォルダがある人の一覧（問い合わせは1回だけ）
+      var k3 = safeEmp(e3), inPend = !have[k3] && !!pend[k3], ed3 = inPend ? null : pathFolder([client, String(year), k3], true);
+      var ro3 = inPend ? (pend[k3].ro || {}) : jsonLoad(ed3, 'roster.json', {});
       var kanaChg = !!(kana2 && ro3.added_by && ro3.kana !== kana2); // フリガナを直せるのは、名簿で追加した人だけ（前年CSVの人は本人が直す）
       if ((!hire2 || ro3.hire === hire2) && (!ret || (ro3.status === 'retired' && ro3.retire === ret)) && !kanaChg) { upd++; return; } // 同じ内容なら書かない
       if (kanaChg) { ro3.kana = kana2; row.kana = kana2; }
       if (hire2) { ro3.hire = hire2; row.hire = hire2; } if (ret) { ro3.status = 'retired'; ro3.retire = ret; row.roster = 'retired'; row.retire = ret; }
-      ro3.updated_at = nowIso(); ro3.updated_by = by; jsonSave(ed3, 'roster.json', ro3); changed[e3] = row; upd++;
+      ro3.updated_at = nowIso(); ro3.updated_by = by; if (inPend) { pend[k3].ro = ro3; pdirty = true; } else jsonSave(ed3, 'roster.json', ro3); changed[e3] = row; upd++;
     } else {
       var e4;
       if (num !== null) e4 = npre + ('000000000' + num).slice(-Math.max(nw, String(num).length)); // 社員番号を個人コードにする
       else { e4 = npre + ('000000000' + nseq).slice(-nw); while (used[e4]) { nseq++; e4 = npre + ('000000000' + nseq).slice(-nw); } nseq++; }
       var ro4 = { status: ret ? 'retired' : 'active', hire: hire2, retire: ret, added_by: by, added_at: nowIso(), name: nm, kana: String(c[iKana !== null ? iKana : -1] || '').trim(), birth: bd, sex: String(c[iSex !== null ? iSex : -1] || '').trim(), pin: randomDigits(6), pin_used: false, pin_issued_at: nowIso() };
-      jsonCreate(newSubFolder(yd, e4), 'roster.json', ro4);
+      pend[safeEmp(e4)] = { ro: ro4 }; pdirty = true;
       changed[e4] = summaryRowFrom(e4, null, null, ro4); reg(e4, nm, bd); add++;
     }
   });
+  if (pdirty) pendingSave(client, year, pend);
   if (Object.keys(changed).length) summaryMerge(client, year, changed);
   indexAdd(client, year);
   return { upd: upd, add: add, skip: skip, warn: warn };
@@ -203,7 +207,7 @@ function companyApi(a, p) {
       var e6 = String(p.emp || ''); var ed6 = empDir(client, e6, false); var ro6 = ed6 ? jsonLoad(ed6, 'roster.json', {}) : null;
       if (!ro6 || !ro6.added_by) throw new Error('削除できるのは、この画面で追加した方だけです。前からいる方は「退職」にしてください');
       var r6 = jsonLoad(ed6, 'answers.json'); if (r6 && r6.status === 'submitted') throw new Error('この方は提出済みのため削除できません。事務所にご連絡ください');
-      deviceUnbindAll(client, e6); ed6.setTrashed(true); cacheDel('fid:' + pathFolder([client, String(year)], true).getId() + '/' + safeEmp(e6));
+      deviceUnbindAll(client, e6); ed6.setTrashed(true); pendingDrop(client, e6); cacheDel('fid:' + pathFolder([client, String(year)], true).getId() + '/' + safeEmp(e6));
       var o6 = {}; o6[e6] = null; summaryMerge(client, year, o6); audit('company removed ' + client + '-' + e6);
       return { ok: true, msg: (ro6.name || '') + ' さんを削除しました', rows: companyRows(client) };
     }
