@@ -64,7 +64,7 @@ function adminApi(a, p) {
       (p.files || []).forEach(function (f) {
         var client = four(p.client); var mm = /KYCSV\d{2}(\d{8})/i.exec(f.name || '');
         if (client.length !== 4 && mm) client = mm[1].substr(-4);
-        if (client.length !== 4) { lines.push(f.name + '：顧問先コードが分かりません（ファイル名が KYCSV06xxxxxxxx.CSV の形でなければ、欄に4桁を入れてください）'); return; }
+        if (client.length !== 4) { lines.push(f.name + '：顧問先コードが分かりません（ファイル名が KYCSV06xxxxxxxx.CSV の形でなければ、欄に4桁を入れてください。氏名の名簿CSVは、顧問先のページの「名簿のCSV」から読み込みます）'); return; }
         try { var codes = icsImport(client, sjisToUtf8(f.b64)); lines.push(f.name + ' → 顧問先 ' + client + ' ' + (names3[client] || '（名前未登録）') + '：' + codes.length + ' 人'); audit('import ' + client + ' ' + codes.length); }
         catch (e) { lines.push(f.name + '：取込に失敗 ' + e.message); }
       });
@@ -132,6 +132,12 @@ function adminApi(a, p) {
       });
       throttleClear('cpass:' + cl9); audit('company pass reset ' + cl9);
       return { ok: true, msg: '社長用の番号を白紙に戻しました（' + cl9 + '）。次にページを開いた方が、番号を決め直します' + (had ? '' : '（もともと未設定でした）') };
+    }
+    case 'roster_export': { var clr = four(p.client); if (clr.length !== 4) throw new Error('顧問先コードが違います'); audit('roster export ' + clr); return { ok: true, csv: rosterCsvText(clr), filename: rosterCsvName(clr) }; } // 名簿を会社用の形のCSVで出す
+    case 'roster_import': { // 名簿CSV（会社用の形）を事務所から読み込む。会社用ページの読み込みと同じ仕組み
+      var cli = four(p.client); if (cli.length !== 4) throw new Error('顧問先コードが違います');
+      var ri = rosterBulk(cli, String(p.text || ''), 'office-csv'); audit('roster import ' + cli + ' +' + ri.add + ' ~' + ri.upd);
+      return { ok: true, upd: ri.upd, add: ri.add, skip: ri.skip, warn: ri.warn, msg: rosterBulkMsg(ri) };
     }
     case 'client_clear': { // この顧問先の今年の名簿を空にする（取り込みをやり直すとき）。提出済みの人がいれば止める
       var clc = four(p.client); if (clc.length !== 4 || String(p.confirm || '') !== clc) throw new Error('確認の顧問先コードが違います');

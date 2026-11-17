@@ -272,6 +272,7 @@ function summaryRowFrom(emp, r, p, ro) {
   return {
     emp: (r && r.emp) || (p && p.code) || emp,
     name: a.name || (p ? (p.sei + ' ' + p.mei) : (ro.name || '')),
+    kana: a.kana || (p ? ((p.sei_k || '') + ' ' + (p.mei_k || '')).trim() : (ro.kana || '')),
     birth: a.birth || (p && p.birth) || ro.birth || '',
     status: (r && r.status) || 'new',
     updated: (r && (r.submitted_at || r.updated_at)) || '',

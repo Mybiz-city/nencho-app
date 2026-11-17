@@ -54,8 +54,11 @@ body.busy #gate button{opacity:.55;pointer-events:none}
 <div class="card"><h2>一覧にない従業員を追加する</h2>
 <div class="row"><label>氏名<br><input type="text" id="a_name" placeholder="山田 太郎"></label><label>フリガナ<br><input type="text" id="a_kana" placeholder="ヤマダ タロウ"></label><label>入社日（年・月は必須。日は分かれば）<br><span id="a_hire"></span></label></div>
 <div class="row"><button onclick="add()">追加する</button></div><p class="note">生年月日や住所などは、本人がスマホで入力します。追加すると、登録コードと暗証番号がすぐに一覧に出ます。</p></div>
-<details class="card"><summary style="cursor:pointer;color:#007A67;font-weight:700">人数が多い場合：CSVでまとめて更新（表計算ソフトに慣れた方向け）</summary><div style="margin-top:10px"><input type="file" id="bulk" accept=".csv,.CSV">　<button class="sm" onclick="bulk()">読み込む</button>
-<p class="note">Excelで作った表をCSVで保存して上げてください。1行目は見出し：<b>氏名</b>（必須）、フリガナ、入社日、退職日、生年月日、性別、社員番号（任意）。生年月日は空欄で構いません（本人がスマホで入力します）。社員番号か氏名が同じ人は更新、いない人は追加します。社員番号を入れると、その番号が登録コードの後ろ6桁になります。</p></div></details>
+<details class="card"><summary style="cursor:pointer;color:#007A67;font-weight:700">人数が多い場合：CSVで出す・読み込む（表計算ソフトに慣れた方向け）</summary><div style="margin-top:10px">
+<p style="margin:0 0 4px"><b>1. 出す</b>　<button class="sm" onclick="exportCsv()">いまの名簿をCSVで出す</button></p>
+<p class="note" style="margin-top:0">社員番号・氏名・フリガナ・入社日・退職日が出ます。登録コードと暗証番号は入りません。</p>
+<p style="margin:10px 0 4px"><b>2. 読み込む</b>　<input type="file" id="bulk" accept=".csv,.CSV">　<button class="sm" onclick="bulk()">読み込む</button></p>
+<p class="note" style="margin-top:0">「1. 出す」のCSVをExcelで直して、CSVのまま保存して上げてください。1行目は見出し：<b>氏名</b>（必須）、社員番号、フリガナ、入社日、退職日、生年月日、性別（任意）。社員番号か氏名が同じ人は、入社日・退職日を更新します（空欄の項目は変えません）。いない人は追加します。社員番号を入れると、その番号が登録コードの後ろ6桁になります。生年月日は空欄で構いません（本人がスマホで入力します）。</p></div></details>
 </div>
 </div>
 <script>
@@ -65,7 +68,7 @@ const $ = s => document.querySelector(s);
 let DEV=''; try{ DEV=localStorage.getItem('nencho_cdev_'+CTX.c)||''; }catch(e){}
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // 待ち表示：通信中は画面の下に「◯ 通信中…」を出す。複数が同時に走っても、全部終わるまで出したままにする
-const WAITTXT={gate:'確認しています…',pass_set:'番号を登録しています…',pass_enter:'番号を確認しています…',list:'一覧を読み込んでいます…',roster:'保存しています…',add:'従業員を追加しています…',bulk:'CSVを読み込んでいます…',edit:'保存しています…',remove:'削除しています…',pin_reissue:'暗証番号を作り直しています…',msg_save:'案内文を保存しています…'};
+const WAITTXT={gate:'確認しています…',pass_set:'番号を登録しています…',pass_enter:'番号を確認しています…',list:'一覧を読み込んでいます…',roster:'保存しています…',add:'従業員を追加しています…',bulk:'CSVを読み込んでいます…',export:'CSVを作っています…',edit:'保存しています…',remove:'削除しています…',pin_reissue:'暗証番号を作り直しています…',msg_save:'案内文を保存しています…'};
 let PENDING=0; function busy(d,a){ PENDING=Math.max(0,PENDING+d); const b=$('#busy'); if(d>0) $('#busyt').textContent=WAITTXT[a]||'通信中…'; b.classList.toggle('on',PENDING>0); document.body.classList.toggle('busy',PENDING>0); }
 const api = (a, body) => new Promise((res, rej) => { busy(1,a); google.script.run.withSuccessHandler(j => { busy(-1); if (!j || !j.ok) { rej(new Error((j&&j.error)||'エラー')); return; } res(j); }).withFailureHandler(e => { busy(-1); rej(new Error('通信に失敗しました：' + (e&&e.message||e))); }).api('company.' + a, Object.assign({}, CTX, { dev: DEV }, body || {})); });
 const toB64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });
@@ -107,6 +110,8 @@ function add(){ const name=$('#a_name').value.trim(), kana=$('#a_kana').value.tr
 async function editRow(i){ const w=ROWS[i]; const name=prompt('氏名を直してください', w.name); if(name===null) return; if(!name.trim()){ msg('氏名を入れてください'); return; } try{ const j=await api('edit',{emp:w.emp, name:name.trim()}); msg(j.msg); render(j.rows); }catch(e){ msg(e.message); } }
 async function removeRow(i){ const w=ROWS[i]; if(!confirm(w.name+' さんを一覧から削除します。この方の登録コードと暗証番号は使えなくなります。よろしいですか？')) return; const before=ROWS; ROWS=ROWS.filter(r=>r!==w); render(ROWS); msg(w.name+' さんを削除しています…'); try{ const j=await api('remove',{emp:w.emp}); delete SENT[w.emp]; msg(j.msg); render(j.rows.concat(ROWS.filter(r=>r.tmp))); }catch(e){ render(before); msg(e.message); } }
 // CSVは画面側で文字コードを直し、10人ずつに小分けして送る（途中経過を出す。長い処理で止まらないように）
+// 名簿のCSV（先頭にBOMを付けて、Excelでそのまま開けるようにする）
+async function exportCsv(){ try{ const j=await api('export'); const url=URL.createObjectURL(new Blob(['\uFEFF'+j.csv],{type:'text/csv'})); const a=document.createElement('a'); a.href=url; a.download=j.filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000); msg('名簿をCSVで保存しました：'+j.filename); }catch(e){ msg(e.message); } }
 function decodeCsv(buf){ try{ return new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch(e){ return new TextDecoder('shift_jis').decode(buf); } }
 async function bulk(){ const f=$('#bulk').files[0]; if(!f){ msg('CSVを選んでください'); return; }
   try{ const lines=decodeCsv(await f.arrayBuffer()).replace(/^\uFEFF/,'').split(/\r\n|\n|\r/).filter(l=>l.trim()!==''); if(lines.length<2){ msg('データの行がありません'); return; }
