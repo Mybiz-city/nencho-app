@@ -42,40 +42,54 @@ function companyApi(a, p) {
       audit('company added ' + client + '-' + emp2);
       return { ok: true, msg: name + ' さんを追加しました。登録コードと暗証番号が一覧に出ています', rows: companyRows(client) };
     }
-    case 'bulk': { // text（画面側で文字コードを直して小分けに送る）または b64
+    case 'bulk': { // text（画面側で文字コードを直して小分けに送る）または b64。必須は「氏名」だけ
       var text = p.text !== undefined ? String(p.text) : decodeAuto(p.b64); var lines = csvParse(text);
       if (!lines.length) throw new Error('空のファイルです');
-      var hdr = lines[0].map(function (c) { return String(c).trim().replace(/　/g, ' ').replace(/^\uFEFF/, ''); });
+      var hdr = lines[0].map(function (c) { return String(c).trim().replace(/　/g, ' ').replace(/^﻿/, ''); });
       var col = function (names) { for (var i = 0; i < names.length; i++) { var j = hdr.indexOf(names[i]); if (j >= 0) return j; } return null; };
-      var iName = col(['氏名', '名前', '社員名']), iKana = col(['フリガナ', 'ふりがな', 'カナ']), iBirth = col(['生年月日']), iHire = col(['入社日', '入社年月日']), iRet = col(['退職日', '退職年月日']), iSex = col(['性別']);
-      if (iName === null || iBirth === null) throw new Error('1行目に「氏名」と「生年月日」の見出しが必要です（入社日・退職日・フリガナ・性別は任意）');
-      var s = summaryLoad(client), existing = {}, used = {};
-      for (var k in s) { existing[String(s[k].name).replace(/[ 　]/g, '') + '|' + s[k].birth] = k; used[k] = 1; }
+      var iName = col(['氏名', '名前', '社員名']), iKana = col(['フリガナ', 'ふりがな', 'カナ']), iBirth = col(['生年月日']), iHire = col(['入社日', '入社年月日']), iRet = col(['退職日', '退職年月日']), iSex = col(['性別']), iNo = col(['社員番号', '個人コード', '社員コード']);
+      if (iName === null) throw new Error('1行目に「氏名」の見出しが必要です（フリガナ・入社日・退職日・生年月日・性別・社員番号は任意）');
+      var strip = function (v) { return String(v || '').replace(/[ 　]/g, ''); };
+      var s = summaryLoad(client), existing = {}, byName = {}, byNum = {}, used = {};
+      var reg = function (k, nm, bd) { var n0 = strip(nm); if (bd) existing[n0 + '|' + bd] = k; (byName[n0] = byName[n0] || []).push(k); var d = codeDigits(k); if (d !== '') byNum[parseInt(d, 10)] = k; used[k] = 1; };
+      for (var k in s) reg(k, s[k].name, s[k].birth);
       var yd = pathFolder([client, String(year)], true), changed = {};
       var nx = nextEmpCode(client), nm0 = /^(\D*)(\d+)$/.exec(nx), npre = nm0[1], nw = nm0[2].length, nseq = parseInt(nm0[2], 10); // 個人コードは今ある最大の番号の続き
-      var upd = 0, add = 0, skip = 0;
+      var upd = 0, add = 0, skip = 0, warn = [];
       lines.slice(1).forEach(function (c) {
-        var nm = String(c[iName] || '').trim(), bd = warekiToIso(c[iBirth]) || '';
-        if (!nm || !bd) { skip++; return; }
+        var nm = String(c[iName] || '').trim(), bd = iBirth !== null ? (warekiToIso(c[iBirth]) || '') : '';
+        if (!nm) { skip++; return; }
         var hire2 = iHire !== null ? (warekiToIso(c[iHire]) || '') : '', ret = iRet !== null ? (warekiToIso(c[iRet]) || '') : '';
-        var key = nm.replace(/[ 　]/g, '') + '|' + bd;
-        if (existing[key]) {
-          var e3 = existing[key]; var row = changed[e3] || s[e3];
+        var no = iNo !== null ? zenToHanDigits(c[iNo]).replace(/\D/g, '') : '', num = no !== '' ? parseInt(no, 10) : null;
+        var n1 = strip(nm), hit = null, row0 = function (e) { return changed[e] || s[e] || {}; };
+        if (num !== null && byNum[num]) { // 社員番号が同じ人：氏名も同じなら本人。違えば番号の重なり
+          if (strip(row0(byNum[num]).name) !== n1) { skip++; warn.push(nm + '（社員番号 ' + num + ' は別の方が使っています）'); return; }
+          hit = byNum[num];
+        } else if (bd && existing[n1 + '|' + bd]) hit = existing[n1 + '|' + bd];
+        else if (byName[n1]) { // 氏名が同じ人：生年月日が食い違わない人が1人だけなら本人
+          var cand = byName[n1].filter(function (e) { var b0 = row0(e).birth || ''; return !bd || !b0 || b0 === bd; });
+          if (cand.length > 1) { skip++; warn.push(nm + '（同じ氏名の方が複数います。生年月日か社員番号を入れてください）'); return; }
+          if (cand.length === 1) { if (num !== null) { skip++; warn.push(nm + '（すでに別の番号で登録されています）'); return; } hit = cand[0]; }
+        }
+        if (hit) {
+          var e3 = hit; var row = changed[e3] || s[e3];
           if (!hire2 && !ret) { upd++; return; } // 変えるものが無ければ書かない
           var ed3 = pathFolder([client, String(year), safeEmp(e3)], true); var ro3 = jsonLoad(ed3, 'roster.json', {});
           if ((!hire2 || ro3.hire === hire2) && (!ret || (ro3.status === 'retired' && ro3.retire === ret))) { upd++; return; } // 同じ内容なら書かない
           if (hire2) { ro3.hire = hire2; row.hire = hire2; } if (ret) { ro3.status = 'retired'; ro3.retire = ret; row.roster = 'retired'; row.retire = ret; }
           ro3.updated_at = nowIso(); ro3.updated_by = 'company-csv'; jsonSave(ed3, 'roster.json', ro3); changed[e3] = row; upd++;
         } else {
-          var e4 = npre + ('000000000' + nseq).slice(-nw); while (used[e4]) { nseq++; e4 = npre + ('000000000' + nseq).slice(-nw); } used[e4] = 1; nseq++;
+          var e4;
+          if (num !== null) e4 = npre + ('000000000' + num).slice(-Math.max(nw, String(num).length)); // 社員番号を個人コードにする
+          else { e4 = npre + ('000000000' + nseq).slice(-nw); while (used[e4]) { nseq++; e4 = npre + ('000000000' + nseq).slice(-nw); } nseq++; }
           var ro4 = { status: ret ? 'retired' : 'active', hire: hire2, retire: ret, added_by: 'company-csv', added_at: nowIso(), name: nm, kana: String(c[iKana !== null ? iKana : -1] || '').trim(), birth: bd, sex: String(c[iSex !== null ? iSex : -1] || '').trim(), pin: randomDigits(6), pin_used: false, pin_issued_at: nowIso() };
           jsonCreate(newSubFolder(yd, e4), 'roster.json', ro4);
-          changed[e4] = summaryRowFrom(e4, null, null, ro4); existing[key] = e4; add++;
+          changed[e4] = summaryRowFrom(e4, null, null, ro4); reg(e4, nm, bd); add++;
         }
       });
       if (Object.keys(changed).length) summaryMerge(client, year, changed);
       indexAdd(client, year);
-      return { ok: true, upd: upd, add: add, skip: skip, msg: '更新 ' + upd + ' 人、追加 ' + add + ' 人、読み飛ばし ' + skip + ' 行', rows: p.norows ? undefined : companyRows(client) };
+      return { ok: true, upd: upd, add: add, skip: skip, warn: warn, msg: '更新 ' + upd + ' 人、追加 ' + add + ' 人、読み飛ばし ' + skip + ' 行' + (warn.length ? '（' + warn.join('、') + '）' : ''), rows: p.norows ? undefined : companyRows(client) };
     }
     case 'edit': { // 会社が追加した人の氏名・フリガナの直し
       var e5 = String(p.emp || ''), nm5 = String(p.name || '').trim(); if (!nm5) throw new Error('氏名を入れてください');
