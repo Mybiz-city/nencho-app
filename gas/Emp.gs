@@ -56,7 +56,17 @@ function empApi(a, p) {
       if (!ro2.pin) { // 暗証番号が未発行（古い取り込み）：この場で発行して会社に出す形にする
         throw new Error('この登録コードには暗証番号がまだありません。会社または事務所に「暗証番号」を発行してもらってください');
       }
-      if (!safeEq(ro2.pin, pin)) { throttleFail(tk, 5); throttleFail(tkc, 30); audit('pin mismatch ' + tk); throw new Error('暗証番号が一致しません'); }
+      var PIN_STOP_MSG = '暗証番号の間違いが続いたため、この登録コードを止めています。会社に「暗証番号の再発行」を頼み、新しい暗証番号で入ってください';
+      if ((ro2.pin_fail || 0) >= PIN_MAX_FAIL) { audit('pin stopped (still) ' + tk); throw new Error(PIN_STOP_MSG); } // 止まっている間は、正しい番号でも入れない
+      if (!safeEq(ro2.pin, pin)) {
+        throttleFail(tk, 5); throttleFail(tkc, 30);
+        var roF = rosterPatch(pc.client, emp, function (r0) { r0.pin_fail = (r0.pin_fail || 0) + 1; r0.pin_fail_at = nowIso(); }); // 15分の停止とは別に、消えない回数を数える
+        var stopNow = !!roF && (roF.pin_fail || 0) >= PIN_MAX_FAIL;
+        if (stopNow) summaryPinLocked(pc.client, emp, true);
+        audit('pin mismatch ' + tk + (stopNow ? ' (stopped)' : ''));
+        throw new Error(stopNow ? PIN_STOP_MSG : '暗証番号が一致しません');
+      }
+      if (ro2.pin_fail) rosterPatch(pc.client, emp, function (r0) { r0.pin_fail = 0; }); // 正しく入れたら回数を0に戻す（間違いがあった人だけ書く）
       // 暗証番号が合った。画面を早く出すため、ここではドライブに書かない（書き込みは1回1秒ほどかかる）。
       // 記録（暗証番号を使った印・スマホの合鍵・一覧の集計）は、画面が出たあと login_after でまとめて書く
       throttleClear(tk); audit('login ok ' + pc.client + '-' + emp);

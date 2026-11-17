@@ -238,6 +238,30 @@ function parseCode(code) {
 }
 function codeDigits(emp) { return String(emp || '').replace(/\D/g, ''); }
 function safeEmp(emp) { return String(emp).replace(/[^\w\*\-]/g, '_'); }
+/** 個人コードとして受け付ける形（英数字・_・*・- だけ、20文字まで）。画面のボタンやフォルダ名に入る値なので、ここで形を絞る */
+function empIdOk(emp) { return /^[\w\*\-]{1,20}$/.test(String(emp === null || emp === undefined ? '' : emp)); }
+function empIdNeed(emp) { if (!empIdOk(emp)) throw new Error('個人コードの形が正しくありません'); return String(emp); }
+/** その顧問先の今年の一覧にいる人か（会社用ページ・事務所画面からの操作は、一覧にいる人だけを相手にする） */
+function empInList(client, emp) { if (!empIdOk(emp)) return false; var s = summaryLoad(client); if (s[emp]) return true; for (var k in s) if (s[k].emp === emp) return true; return false; }
+function empListedNeed(client, emp) { if (!empInList(client, emp)) throw new Error('この方は一覧に見つかりません。画面を開き直してください'); return String(emp); }
+// ---------- 暗証番号の間違い（消えない回数） ----------
+var PIN_MAX_FAIL = 10; // 続けてこの回数間違えたら、会社か事務所が暗証番号を再発行するまで止める
+/** 名簿の中身（roster）を書き換える。フォルダがある人は roster.json、まだ無い人は「まとめ置き」の中を直す（フォルダは作らない）。戻り：書き換え後の中身 */
+function rosterPatch(client, emp, fn) {
+  var out = null;
+  withLock(function () {
+    var ed = empDirPeek(client, emp);
+    if (ed) { var ro = jsonLoad(ed, 'roster.json', {}); fn(ro); jsonSave(ed, 'roster.json', ro); out = ro; return; }
+    var pend = pendingLoad(client), k = safeEmp(emp); if (!pend[k]) return;
+    pend[k].ro = pend[k].ro || {}; fn(pend[k].ro); pendingSave(client, null, pend); out = pend[k].ro;
+  });
+  return out;
+}
+/** 一覧（_summary.json）の1人分の「止まっている」印だけを書き換える（フォルダを作らない） */
+function summaryPinLocked(client, emp, locked) {
+  var cd = clientDir(client); if (!cd) return;
+  withLock(function () { var s = jsonLoad(cd, '_summary.json', {}); var k = s[emp] ? emp : null; if (!k) for (var x in s) if (s[x].emp === emp) { k = x; break; } if (!k) return; s[k].pin_locked = !!locked; jsonSave(cd, '_summary.json', s); });
+}
 function clientDir(client, year) { return pathFolder([client, String(year || cfg().year)], false); }
 // ---------- 個人フォルダと「まとめ置き」 ----------
 // 名簿CSV・前年CSVの取り込みでは、1人ずつフォルダとファイルを作らない（1人あたり2〜3秒かかるため）。
@@ -310,7 +334,7 @@ function summaryRowFrom(emp, r, p, ro) {
     updated: (r && (r.submitted_at || r.updated_at)) || '',
     certs: certs, checked: !!(r && r.office_checked_at),
     roster: ro.status || 'active', hire: ro.hire || '', retire: ro.retire || '',
-    pin: ro.pin || '', pin_used: !!ro.pin_used, pin_used_count: ro.pin_used_count || 0, device: !!((r && r.device_bound_at) || ro.pin_used),
+    pin: ro.pin || '', pin_used: !!ro.pin_used, pin_used_count: ro.pin_used_count || 0, pin_locked: (ro.pin_fail || 0) >= PIN_MAX_FAIL, device: !!((r && r.device_bound_at) || ro.pin_used),
     unknown_income: a.has_other_income === 'unknown', otsu: a.other_employer_decl === 'other',
     pending: /^N/.test(String((r && r.emp) || emp)), added: !!ro.added_by
   };

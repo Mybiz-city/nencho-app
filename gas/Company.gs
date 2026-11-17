@@ -15,7 +15,7 @@ function companyContext(c, k) {
 function companyNeed(p) { var ctx = companyContext(p.c, p.k); if (!ctx.ok) throw new Error(ctx.error); return ctx; }
 function companyRows(client) {
   var s = summaryLoad(client); var y = cfg().year;
-  return Object.keys(s).sort().map(function (k) { var e = s[k]; return { emp: e.emp, name: e.name, birth: e.birth, hire: e.hire, retire: e.retire, status: e.roster, app: e.status, pending: e.pending, code: client + codeDigits(e.emp), added: !!e.added, pin: e.pin, pin_used: e.pin_used, pin_used_count: e.pin_used_count || 0, device: e.device }; });
+  return Object.keys(s).sort().map(function (k) { var e = s[k]; return { emp: e.emp, name: e.name, birth: e.birth, hire: e.hire, retire: e.retire, status: e.roster, app: e.status, pending: e.pending, code: client + codeDigits(e.emp), added: !!e.added, pin: e.pin, pin_used: e.pin_used, pin_used_count: e.pin_used_count || 0, pin_locked: !!e.pin_locked, device: e.device }; });
 }
 /** 社長用の番号の状態。set：まだ決めていない　enter：番号が要る　ok：この端末は確認済み　locked：間違いが続いて止まっている */
 function companyGate(client, p) {
@@ -168,16 +168,17 @@ function companyApi(a, p) {
       return { ok: true, msg: tpl ? '案内文を保存しました' : '案内文を元の文に戻しました' };
     }
     case 'roster': {
-      var emp = String(p.emp || ''); var ed = empDir(client, emp, true); var ro = jsonLoad(ed, 'roster.json', {});
-      ro.status = p.status === 'retired' ? 'retired' : 'active'; ro.hire = String(p.hire || '').trim(); ro.retire = ro.status === 'retired' ? String(p.retire || '').trim() : '';
+      var emp = empListedNeed(client, p.emp); var ed = empDir(client, emp, true); var ro = jsonLoad(ed, 'roster.json', {}); // 一覧にいる人だけ（存在しない個人コードで新しい行を作らせない）
+      var ymd = function (v) { v = String(v || '').trim(); return /^\d{4}-\d{2}(-\d{2})?$/.test(v) ? v : ''; }; // 日付は 2026-04 か 2026-04-01 の形だけ
+      ro.status = p.status === 'retired' ? 'retired' : 'active'; ro.hire = ymd(p.hire); ro.retire = ro.status === 'retired' ? ymd(p.retire) : '';
       ro.updated_at = nowIso(); ro.updated_by = 'company'; jsonSave(ed, 'roster.json', ro); summaryUpdate(client, emp);
       return { ok: true, msg: '保存しました', rows: companyRows(client) };
     }
     case 'add': {
-      var name = String(p.name || '').trim(), kana = String(p.kana || '').trim(), birth = String(p.birth || ''), hire = String(p.hire || ''), sex = String(p.sex || '');
+      var name = String(p.name || '').trim().substr(0, 60), kana = String(p.kana || '').trim().substr(0, 60), birth = /^\d{4}-\d{2}-\d{2}$/.test(String(p.birth || '')) ? String(p.birth) : '', hire = String(p.hire || ''), sex = String(p.sex || '').substr(0, 4);
       if (!name) throw new Error('氏名を入れてください');
       if (!kana) throw new Error('フリガナを入れてください');
-      if (!/^\d{4}-\d{2}/.test(hire)) throw new Error('入社日の年と月を選んでください');
+      if (!/^\d{4}-\d{2}(-\d{2})?$/.test(hire)) throw new Error('入社日の年と月を選んでください');
       var emp2, yd2 = pathFolder([client, String(year)], true);
       var ro2 = { status: 'active', hire: hire, retire: '', added_by: 'company', added_at: nowIso(), name: name, kana: kana, birth: birth, sex: sex, pin: randomDigits(6), pin_used: false, pin_issued_at: nowIso() };
       withLock(function () { // 番号の取り合いを防ぐため、番号決め〜集計の反映までを1人ずつ
@@ -195,23 +196,23 @@ function companyApi(a, p) {
     }
     case 'export': audit('company roster export ' + client); return { ok: true, csv: rosterCsvText(client), filename: rosterCsvName(client) }; // 名簿をCSVで出す（登録コード・暗証番号は含めない）
     case 'edit': { // 会社が追加した人の氏名・フリガナの直し
-      var e5 = String(p.emp || ''), nm5 = String(p.name || '').trim(); if (!nm5) throw new Error('氏名を入れてください');
+      var e5 = empListedNeed(client, p.emp), nm5 = String(p.name || '').trim().substr(0, 60); if (!nm5) throw new Error('氏名を入れてください');
       var ed5 = empDir(client, e5, false); var ro5 = ed5 ? jsonLoad(ed5, 'roster.json', {}) : null;
       if (!ro5 || !ro5.added_by) throw new Error('直せるのは、この画面で追加した方だけです');
-      ro5.name = nm5; if (String(p.kana || '').trim()) ro5.kana = String(p.kana).trim(); ro5.updated_at = nowIso(); jsonSave(ed5, 'roster.json', ro5);
+      ro5.name = nm5; if (String(p.kana || '').trim()) ro5.kana = String(p.kana).trim().substr(0, 60); ro5.updated_at = nowIso(); jsonSave(ed5, 'roster.json', ro5);
       var r5 = jsonLoad(ed5, 'answers.json'); if (r5 && !r5.submitted_at) { r5.answers = r5.answers || {}; r5.answers.name = nm5; if (ro5.kana) r5.answers.kana = ro5.kana; jsonSave(ed5, 'answers.json', r5); }
       var o5 = {}; o5[e5] = summaryRowFrom(e5, r5, null, ro5); summaryMerge(client, year, o5);
       return { ok: true, msg: '氏名を直しました', rows: companyRows(client) };
     }
     case 'remove': { // 会社が追加した人の取り消し（提出済みは不可）
-      var e6 = String(p.emp || ''); var ed6 = empDir(client, e6, false); var ro6 = ed6 ? jsonLoad(ed6, 'roster.json', {}) : null;
+      var e6 = empListedNeed(client, p.emp); var ed6 = empDir(client, e6, false); var ro6 = ed6 ? jsonLoad(ed6, 'roster.json', {}) : null;
       if (!ro6 || !ro6.added_by) throw new Error('削除できるのは、この画面で追加した方だけです。前からいる方は「退職」にしてください');
       var r6 = jsonLoad(ed6, 'answers.json'); if (r6 && r6.status === 'submitted') throw new Error('この方は提出済みのため削除できません。事務所にご連絡ください');
       deviceUnbindAll(client, e6); ed6.setTrashed(true); pendingDrop(client, e6); cacheDel('fid:' + pathFolder([client, String(year)], true).getId() + '/' + safeEmp(e6));
       var o6 = {}; o6[e6] = null; summaryMerge(client, year, o6); audit('company removed ' + client + '-' + e6);
       return { ok: true, msg: (ro6.name || '') + ' さんを削除しました', rows: companyRows(client) };
     }
-    case 'pin_reissue': { var pin = pinReissue(client, String(p.emp || '')); audit('pin reissue by company ' + client + '-' + p.emp); return { ok: true, msg: '暗証番号を発行し直しました：' + pin, rows: companyRows(client) }; }
+    case 'pin_reissue': { var ep = empListedNeed(client, p.emp); var pin = pinReissue(client, ep); audit('pin reissue by company ' + client + '-' + ep); return { ok: true, msg: '暗証番号を発行し直しました：' + pin, rows: companyRows(client) }; }
   }
   throw new Error('不明な操作');
 }

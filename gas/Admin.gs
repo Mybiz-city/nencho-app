@@ -3,6 +3,20 @@
 function adminNeed(p) { var s = sessionGet('adm', p._t, 7200); if (!s) throw new Error('ログインが切れました。開き直してください'); return s; }
 function four(c) { return String(c || '').replace(/\D/g, '').substr(0, 4); }
 function yearOf(p) { var y = parseInt(p.y, 10); return (y && y > 2000) ? y : cfg().year; }
+// 大事な操作（プログラムの入れ替え・設定・パスワード・バックアップコード・古い年の削除）は、ログイン済みでも、その場で認証アプリの6桁をもう一度確かめる。
+// 事務所の合鍵だけを盗まれても、これらの操作はできない。確かめたあと5分間は聞き直さない
+var ADMIN_SUDO = { update: 1, settings_set: 1, change_pw: 1, backup_codes: 1, purge: 1 };
+function adminSudo(p) {
+  var c = cfg(); if (!c.admin_totp_secret) return null; // 2段階認証が未設定のあいだは確かめようがない
+  var key = 'sudo:' + sha256(String(p._t || ''));
+  if (cacheGet(key)) return null;
+  var need = function (m) { return { ok: false, need_otp: true, error: m }; };
+  if (p.otp === undefined || p.otp === null || String(p.otp) === '') return need('この操作の前に、認証アプリの6桁をもう一度入れてください（画面が古いときは、開き直してからやり直してください）');
+  if (!throttleOk('adminsudo')) { audit('admin sudo locked'); return { ok: false, error: '6桁の間違いが続いたため、15分止めています' }; }
+  if (!totpVerify(c.admin_totp_secret, p.otp)) { throttleFail('adminsudo', 5); audit('admin sudo ng'); return need('6桁の番号が違います。認証アプリの今の番号を入れてください'); }
+  throttleClear('adminsudo'); cachePut(key, '1', 300); audit('admin sudo ok');
+  return null;
+}
 
 function adminApi(a, p) {
   var c = cfg();
@@ -23,6 +37,7 @@ function adminApi(a, p) {
   }
   if (a === 'login_info') return { ok: true, totp: !!c.admin_totp_secret, app_name: c.app_name };
   adminNeed(p);
+  if (ADMIN_SUDO[a]) { var sd = adminSudo(p); if (sd) return sd; }
   switch (a) {
     case 'home': {
       var y = yearOf(p); var ix = indexLoad(), names = clientsLoad(), keys = jsonLoad(rootFolder(), '_company_keys.json', {});
@@ -54,7 +69,7 @@ function adminApi(a, p) {
       return { ok: true, msg: otp ? '社長へ送る案内文を保存しました' : '社長へ送る案内文を元の文に戻しました' };
     }
     case 'emp': {
-      var cl3 = four(p.client), y3 = yearOf(p), emp = String(p.emp || '');
+      var cl3 = four(p.client), y3 = yearOf(p), emp = empIdNeed(p.emp);
       var ed = empDir(cl3, emp, false, y3); if (!ed) throw new Error('見つかりません');
       var r = jsonLoad(ed, 'answers.json') || emptyRecord(cl3, emp); if (!r.prev) r.prev = jsonLoad(ed, 'prev.json');
       var ro = jsonLoad(ed, 'roster.json', {});
@@ -64,7 +79,7 @@ function adminApi(a, p) {
       var pk = packRecord(r); pk.roster = ro; pk.dep_kubun = row[C.dep_kubun]; pk.totals = certTotals(r); pk.diff = diff;
       return { ok: true, record: pk };
     }
-    case 'photo': return { ok: true, data: photoDataUrl(four(p.client), String(p.emp), p.f, yearOf(p)) };
+    case 'photo': return { ok: true, data: photoDataUrl(four(p.client), empIdNeed(p.emp), p.f, yearOf(p)) };
     case 'import_csv': { // files:[{name,b64}] client?
       var names3 = clientsLoad(); var lines = [];
       (p.files || []).forEach(function (f) {
@@ -89,6 +104,7 @@ function adminApi(a, p) {
     case 'client_name': { var nm = clientsLoad(); nm[four(p.client)] = String(p.name || '').trim(); jsonSave(rootFolder(), '_clients.json', nm); return { ok: true, msg: '保存しました' }; }
     case 'add_emp': {
       var cl4 = four(p.client), e4 = String(p.emp || '').trim(); if (cl4.length !== 4 || !e4) throw new Error('顧問先コード4桁と個人コードを入れてください');
+      if (!empIdOk(e4)) throw new Error('個人コードに使えるのは、英数字と * - _ だけです（20文字まで）');
       var ed4 = empDir(cl4, e4, true); var ro4 = jsonLoad(ed4, 'roster.json', {});
       if (!ro4.pin) { ro4.pin = randomDigits(6); ro4.pin_used = false; ro4.pin_issued_at = nowIso(); ro4.status = ro4.status || 'active'; jsonSave(ed4, 'roster.json', ro4); }
       summaryUpdate(cl4, e4); indexAdd(cl4, c.year);
@@ -160,7 +176,8 @@ function adminApi(a, p) {
       return { ok: true, msg: clc + ' の ' + c.year + ' 年分の名簿を空にしました（' + nc + ' 人分をごみ箱へ）。会社用ページのURLはそのまま使えます' };
     }
     case 'assign_code': {
-      var cl9 = four(p.client), old = String(p.old || ''), nw = String(p.new || '').trim();
+      var cl9 = four(p.client), old = empIdNeed(p.old), nw = String(p.new || '').trim();
+      if (nw && !empIdOk(nw)) throw new Error('個人コードに使えるのは、英数字と * - _ だけです（20文字まで）');
       var od = empDir(cl9, old, false); if (!od) throw new Error('元のフォルダがありません');
       if (!nw) throw new Error('個人コードを入れてください');
       if (empDir(cl9, nw, false)) throw new Error('その個人コードは既にあります');
@@ -170,7 +187,7 @@ function adminApi(a, p) {
       return { ok: true, msg: old + ' → ' + nw + ' に割り当てました。登録コード：' + cl9 + codeDigits(nw) };
     }
     case 'reset_emp': {
-      var cl10 = four(p.client), e10 = String(p.emp || ''); var r10 = loadRecord(cl10, e10); var ed10 = empDir(cl10, e10, true);
+      var cl10 = four(p.client), e10 = empListedNeed(four(p.client), p.emp); var r10 = loadRecord(cl10, e10); var ed10 = empDir(cl10, e10, true);
       var pd10 = photosDir(ed10, false); if (pd10) { var it10 = pd10.getFiles(); while (it10.hasNext()) it10.next().setTrashed(true); }
       fileDelete(ed10, 'submitted.json');
       var n10 = emptyRecord(cl10, e10); n10.prev = r10.prev; n10.line_user_id = r10.line_user_id; n10.device_bound_at = r10.device_bound_at; n10.reset_log = (r10.reset_log || []).concat([nowIso() + ' 事務所']);
@@ -178,13 +195,13 @@ function adminApi(a, p) {
       return { ok: true, msg: cl10 + '-' + e10 + ' の今年の入力を消しました' };
     }
     case 'note': {
-      var r11 = loadRecord(four(p.client), String(p.emp || ''));
+      var r11 = loadRecord(four(p.client), empListedNeed(four(p.client), p.emp));
       r11.office_note = String(p.note || '').trim();
       if (p.birth && /^\d{4}-\d{2}-\d{2}$/.test(p.birth)) { r11.answers.birth = p.birth; r11.birth_set_by = 'office'; }
       if (p.checked) r11.office_checked_at = nowIso(); else delete r11.office_checked_at;
       saveRecord(r11); return { ok: true, msg: '保存しました' };
     }
-    case 'pin_reissue': { var pr = pinReissue(four(p.client), String(p.emp || '')); audit('pin reissue by office ' + four(p.client) + '-' + p.emp); return { ok: true, msg: '暗証番号を発行し直しました：' + pr + '（前の暗証番号は使えなくなりました）', pin: pr }; }
+    case 'pin_reissue': { var epr = empListedNeed(four(p.client), p.emp); var pr = pinReissue(four(p.client), epr); audit('pin reissue by office ' + four(p.client) + '-' + epr); return { ok: true, msg: '暗証番号を発行し直しました：' + pr + '（前の暗証番号は使えなくなりました）', pin: pr }; }
     case 'audit_tail': {
       var root = rootFolder(); var nm2 = '_audit_' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMM') + '.log'; var f = fileIn(root, nm2);
       var ls = ((f ? f.getBlob().getDataAsString('UTF-8') : '') + (PropertiesService.getScriptProperties().getProperty('AUDIT_BUF') || '')).split('\n').filter(function (l) { return l; });
@@ -210,7 +227,8 @@ function addDays(iso, n) { var d = new Date(iso); if (isNaN(d)) return ''; d.set
 /** 暗証番号を作り直し、そのスマホの合鍵を無効にする */
 function pinReissue(client, emp) {
   var ed = empDir(client, emp, true); var ro = jsonLoad(ed, 'roster.json', {});
-  ro.pin = randomDigits(6); ro.pin_used = false; ro.pin_issued_at = nowIso(); jsonSave(ed, 'roster.json', ro);
+  ro.pin = randomDigits(6); ro.pin_used = false; ro.pin_issued_at = nowIso(); ro.pin_fail = 0; jsonSave(ed, 'roster.json', ro); // 再発行で、間違いの回数と停止も解ける
+  throttleClear('code:' + client + codeDigits(emp));
   deviceUnbindAll(client, emp);
   var r = jsonLoad(ed, 'answers.json'); if (r) { delete r.device_bound_at; jsonSave(ed, 'answers.json', r); }
   summaryUpdate(client, emp);
