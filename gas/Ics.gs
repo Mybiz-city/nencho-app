@@ -94,7 +94,7 @@ function incomeLabel(incomes) {
 }
 function certKey(cat, contract) {
   var old = contract === 'old';
-  return { life: old ? 'life_old' : 'life_new', kaigo: 'kaigo', nenkin: old ? 'nenkin_old' : 'nenkin_new', jishin: 'jishin', old_songai: 'old_songai', kyosai: 'kyosai', ideco: 'kyosai', kokumin_nenkin: 'kokumin_nenkin', jutaku: 'zandaka1' }[cat] || null;
+  return { life: old ? 'life_old' : 'life_new', kaigo: 'kaigo', nenkin: old ? 'nenkin_old' : 'nenkin_new', jishin: 'jishin', old_songai: 'old_songai', kyosai: 'kyosai', ideco: 'kyosai', fuyo: 'kyosai', kokumin_nenkin: 'kokumin_nenkin', jutaku: 'zandaka1' }[cat] || null;
 }
 function certTotals(r) {
   var s = { life_new: 0, life_old: 0, kaigo: 0, nenkin_new: 0, nenkin_old: 0, jishin: 0, old_songai: 0, kyosai: 0, kokumin_nenkin: 0, shaho_self: 0, jutaku_koujo: 0, zandaka1: 0 };

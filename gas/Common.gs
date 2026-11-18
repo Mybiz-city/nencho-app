@@ -330,6 +330,7 @@ function summaryRowFrom(emp, r, p, ro) {
     name: a.name || (p ? (p.sei + ' ' + p.mei) : (ro.name || '')),
     kana: a.kana || (p ? ((p.sei_k || '') + ' ' + (p.mei_k || '')).trim() : (ro.kana || '')),
     birth: a.birth || (p && p.birth) || ro.birth || '',
+    payded: (a.payroll_ded === 'yes' || a.payroll_ded === 'unknown') ? a.payroll_ded : '', // 給与天引きの掛金（事務所が源泉徴収簿で集計する合図）
     status: (r && r.status) || 'new',
     updated: (r && (r.submitted_at || r.updated_at)) || '',
     certs: certs, checked: !!(r && r.office_checked_at),
